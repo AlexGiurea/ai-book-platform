@@ -55,7 +55,7 @@ interface Page {
 
 interface ApiProject {
   id: string;
-  status: "pending" | "planning" | "awaiting_approval" | "writing" | "complete" | "failed";
+  status: "pending" | "queued" | "planning" | "awaiting_approval" | "writing" | "complete" | "failed";
   batches: Array<{
     batchNumber: number;
     chapterNumber?: number;

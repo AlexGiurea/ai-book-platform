@@ -22,7 +22,7 @@ export class WriterAgent {
     blueprint: BatchBlueprint,
     lastOpenThreads: string | undefined
   ): Promise<BatchWriteResult> {
-    const project = store.getProject(projectId);
+    const project = await store.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
     if (!project.bible) throw new Error("Project has no book blueprint — plan first");
 
@@ -38,7 +38,7 @@ export class WriterAgent {
 
     const isFinalBatch = blueprint.number >= bible.totalBatches;
 
-    store.appendEvent(projectId, {
+    await store.appendEvent(projectId, {
       type: "batch_start",
       batchNumber: blueprint.number,
       totalWords: project.totalWords,
@@ -78,15 +78,15 @@ export class WriterAgent {
     const cleanSummary = stripEmDashes(parsed.summary);
     const cleanOpenThreads = stripEmDashes(parsed.openThreads);
 
-    const appended = store.appendBatch(projectId, {
+    const appended = await store.appendBatch(projectId, {
       prose: cleanProse,
       chapterNumber: blueprint.chapterNumber,
       chapterTitle: blueprint.chapterTitle,
       chapterSummary: cleanSummary,
     });
 
-    const updated = store.getProject(projectId);
-    store.appendEvent(projectId, {
+    const updated = await store.getProject(projectId);
+    await store.appendEvent(projectId, {
       type: "batch_complete",
       batchNumber: blueprint.number,
       wordsInBatch: appended?.wordCount ?? 0,

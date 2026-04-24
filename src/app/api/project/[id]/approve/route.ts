@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { bookComposer, store } from "@/lib/agent";
+import { store } from "@/lib/agent";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = store.getProject(id);
+  const project = await store.getProject(id);
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
@@ -23,9 +23,11 @@ export async function POST(
     return NextResponse.json({ error: "Project has no blueprint to approve" }, { status: 409 });
   }
 
-  bookComposer.writeBook(id).catch((err) => {
-    console.error(`[folio] writeBook failed for ${id}:`, err);
-  });
+  await store.updateStatus(id, "writing");
+  await store.enqueueJob(id, "write");
+  if (project.input.preferences.imageStyle !== "none") {
+    await store.enqueueJob(id, "cover");
+  }
 
   return NextResponse.json({ ok: true, projectId: id });
 }

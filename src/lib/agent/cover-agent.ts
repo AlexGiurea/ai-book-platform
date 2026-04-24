@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { put } from "@vercel/blob";
 import { getImageModelName, getOpenAIClient } from "./openai-client";
 import { store } from "./context-store";
 import type { BookCover, StoryBible } from "./types";
@@ -69,7 +70,7 @@ export interface CoverGenerationResult {
 
 export class CoverAgent {
   async generateCover(projectId: string): Promise<CoverGenerationResult> {
-    const project = store.getProject(projectId);
+    const project = await store.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
     if (!project.bible) throw new Error("Cannot generate cover before a bible exists");
 
@@ -77,8 +78,8 @@ export class CoverAgent {
     const prompt = buildCoverPrompt(project.bible, project.input.preferences.imageStyle);
     const client = getOpenAIClient();
 
-    store.updateCoverStatus(projectId, "generating");
-    store.appendEvent(projectId, { type: "cover_start", model });
+    await store.updateCoverStatus(projectId, "generating");
+    await store.appendEvent(projectId, { type: "cover_start", model });
 
     try {
       const response = await client.images.generate({
@@ -98,21 +99,34 @@ export class CoverAgent {
         throw new Error("Image generation returned no base64 image data");
       }
 
-      const dir = path.join(process.cwd(), "public", "generated", "covers");
-      await mkdir(dir, { recursive: true });
+      const imageBuffer = Buffer.from(image.b64_json, "base64");
       const fileName = `${projectId}.png`;
-      const filePath = path.join(dir, fileName);
-      await writeFile(filePath, Buffer.from(image.b64_json, "base64"));
+      let imageUrl: string;
+
+      if (process.env.BLOB_READ_WRITE_TOKEN) {
+        const blob = await put(`covers/${fileName}`, imageBuffer, {
+          access: "public",
+          contentType: "image/png",
+          addRandomSuffix: false,
+        });
+        imageUrl = blob.url;
+      } else {
+        const dir = path.join(process.cwd(), "public", "generated", "covers");
+        await mkdir(dir, { recursive: true });
+        const filePath = path.join(dir, fileName);
+        await writeFile(filePath, imageBuffer);
+        imageUrl = `/generated/covers/${fileName}`;
+      }
 
       const cover: BookCover = {
-        imageUrl: `/generated/covers/${fileName}`,
+        imageUrl,
         prompt,
         model,
         createdAt: new Date().toISOString(),
       };
 
-      store.setCover(projectId, cover);
-      store.appendEvent(projectId, {
+      await store.setCover(projectId, cover);
+      await store.appendEvent(projectId, {
         type: "cover_complete",
         model,
         coverImageUrl: cover.imageUrl,
@@ -121,8 +135,8 @@ export class CoverAgent {
       return { cover };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      store.updateCoverStatus(projectId, "failed", msg);
-      store.appendEvent(projectId, { type: "cover_failed", error: msg, model });
+      await store.updateCoverStatus(projectId, "failed", msg);
+      await store.appendEvent(projectId, { type: "cover_failed", error: msg, model });
       throw err;
     }
   }

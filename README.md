@@ -65,6 +65,7 @@ npm run dev
 npm run build
 npm run start
 npm run lint
+npm run db:migrate
 npm run test:cover-image
 ```
 
@@ -75,6 +76,20 @@ npm run test:cover-image
 | `OPENAI_API_KEY` | Yes | OpenAI API key used by the planning, writing, and image agents. |
 | `OPENAI_MODEL` | No | Text model used for book planning and writing. Defaults to `gpt-5.1`. |
 | `OPENAI_IMAGE_MODEL` | No | Image model used for cover generation. Defaults to `gpt-image-2`. |
+| `DATABASE_URL` | Yes for persistence | Neon Postgres connection string used for durable projects, batches, events, and jobs. |
+| `BLOB_READ_WRITE_TOKEN` | Yes for persistent covers | Vercel Blob token used to persist generated cover images. |
+
+## Persistent Storage
+
+Run the database migration after connecting Neon:
+
+```bash
+npm run db:migrate
+```
+
+Generated book projects are stored in Neon Postgres. Cover images are uploaded to Vercel Blob when `BLOB_READ_WRITE_TOKEN` is present. Without storage environment variables, the app falls back to local in-memory/file storage for development only.
+
+Long-running generation is split into durable jobs stored in Postgres. The `/api/jobs/run` endpoint processes one job unit at a time. The app also kicks this endpoint while a user is watching generation progress, and `vercel.json` includes a Hobby-compatible daily safety sweep. For unattended minute-by-minute processing after a browser tab closes, use Vercel Pro Cron or an external scheduler to call `/api/jobs/run`.
 
 ## Deployment
 

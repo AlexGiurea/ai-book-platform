@@ -4,5 +4,5 @@ import { store } from "@/lib/agent";
 export const runtime = "nodejs";
 
 export async function GET() {
-  return NextResponse.json(store.listProjects());
+  return NextResponse.json(await store.listProjects());
 }

@@ -36,7 +36,7 @@ const particles = Array.from({ length: 18 }, (_, i) => ({
 // ─── Types ────────────────────────────────────────────────────
 interface ProjectState {
   id: string;
-  status: "pending" | "planning" | "awaiting_approval" | "writing" | "complete" | "failed";
+  status: "pending" | "queued" | "planning" | "awaiting_approval" | "writing" | "complete" | "failed";
   bible?: {
     title: string;
     synopsis: string;
@@ -63,7 +63,14 @@ interface ProjectState {
       targetWords: number;
     }>;
   };
-  batches: Array<{ batchNumber: number; wordCount: number; chapterNumber?: number; chapterTitle?: string }>;
+  batches: Array<{
+    batchNumber: number;
+    wordCount: number;
+    chapterNumber?: number;
+    chapterTitle?: string;
+    prose?: string;
+    createdAt?: string;
+  }>;
   events: BatchEvent[];
   totalWords: number;
   targetWords: number;
@@ -81,9 +88,27 @@ interface ProjectState {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
+const WORDS_PER_PAGE = 275;
+
+function wordsToPages(w: number): number {
+  if (!w || w <= 0) return 0;
+  return Math.max(1, Math.round(w / WORDS_PER_PAGE));
+}
+
 function fmtMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function fmtDuration(ms: number): string {
+  if (!isFinite(ms) || ms <= 0) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m < 60) return `${m}m ${r.toString().padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${(m % 60).toString().padStart(2, "0")}m`;
 }
 
 function fmtTime(iso: string): string {
@@ -91,23 +116,34 @@ function fmtTime(iso: string): string {
 }
 
 // ─── Observability panel ─────────────────────────────────────
-function ObservabilityPanel({ events, model, totalWords, targetWords }: {
+function ObservabilityPanel({ events, model, totalWords, targetWords, batches, expectedBatches, etaMs }: {
   events: BatchEvent[];
   model?: string;
   totalWords: number;
   targetWords: number;
+  batches: ProjectState["batches"];
+  expectedBatches: number;
+  etaMs: number | null;
 }) {
   const [devOpen, setDevOpen] = useState(false);
+  const [expandedBatch, setExpandedBatch] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [events.length]);
 
+  const proseByBatch = new Map<number, string>();
+  for (const b of batches) {
+    if (b.prose) proseByBatch.set(b.batchNumber, b.prose);
+  }
+
   const completedBatches = events.filter((e) => e.type === "batch_complete");
   const avgMs = completedBatches.length
     ? Math.round(completedBatches.reduce((s, e) => s + (e.durationMs ?? 0), 0) / completedBatches.length)
     : null;
+  const totalPages = wordsToPages(totalWords);
+  const targetPages = wordsToPages(targetWords);
 
   // User-facing log: planning + batch_complete + project-level events
   const userEvents = events.filter(
@@ -166,28 +202,68 @@ function ObservabilityPanel({ events, model, totalWords, targetWords }: {
               const pct = ev.totalWords && targetWords
                 ? Math.round((ev.totalWords / targetWords) * 100)
                 : 0;
+              const batchPages = wordsToPages(ev.wordsInBatch ?? 0);
+              const prose = ev.batchNumber != null ? proseByBatch.get(ev.batchNumber) : undefined;
+              const isExpanded = expandedBatch === ev.batchNumber;
               return (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
-                  className="flex items-start gap-2.5"
+                  className="space-y-1.5"
                 >
-                  <CheckCircle2 size={12} className="text-ember-400 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs text-parchment-300">
-                      Section {ev.batchNumber} written
-                    </span>
-                    <span className="text-xs text-parchment-500/60 ml-1.5">
-                      +{(ev.wordsInBatch ?? 0).toLocaleString()} words
-                      {ev.durationMs ? ` · ${fmtMs(ev.durationMs)}` : ""}
-                      {ev.totalWords ? ` · ${pct}% complete` : ""}
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 size={12} className="text-ember-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs text-parchment-300">
+                        Section {ev.batchNumber} written
+                      </span>
+                      <span className="text-xs text-parchment-500/60 ml-1.5">
+                        +{(ev.wordsInBatch ?? 0).toLocaleString()} words
+                        {batchPages ? ` · ~${batchPages}p` : ""}
+                        {ev.durationMs ? ` · ${fmtMs(ev.durationMs)}` : ""}
+                        {ev.totalWords ? ` · ${pct}%` : ""}
+                      </span>
+                      {prose && (
+                        <button
+                          onClick={() =>
+                            setExpandedBatch((cur) =>
+                              cur === ev.batchNumber ? null : (ev.batchNumber ?? null)
+                            )
+                          }
+                          className="ml-1.5 text-[10px] text-ember-400/80 hover:text-ember-300 transition-colors"
+                        >
+                          {isExpanded ? "hide preview" : "preview"}
+                        </button>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">
+                      {fmtTime(ev.timestamp)}
                     </span>
                   </div>
-                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">
-                    {fmtTime(ev.timestamp)}
-                  </span>
+                  <AnimatePresence>
+                    {isExpanded && prose && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="ml-5 overflow-hidden"
+                      >
+                        <div
+                          className="rounded-lg border border-white/8 px-3 py-2 max-h-36 overflow-y-auto text-[11px] leading-relaxed text-parchment-300/90 font-serif whitespace-pre-wrap"
+                          style={{
+                            background: "rgba(0,0,0,0.25)",
+                            scrollbarWidth: "thin",
+                            scrollbarColor: "rgba(255,255,255,0.15) transparent",
+                          }}
+                        >
+                          {prose}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               );
             }
@@ -264,7 +340,10 @@ function ObservabilityPanel({ events, model, totalWords, targetWords }: {
               {[
                 { label: "Model", value: model ?? "—" },
                 { label: "Avg batch", value: avgMs != null ? fmtMs(avgMs) : "—" },
+                { label: "ETA remaining", value: etaMs != null ? fmtDuration(etaMs) : "—" },
                 { label: "Words / target", value: `${totalWords.toLocaleString()} / ${targetWords.toLocaleString()}` },
+                { label: "Pages / target", value: `~${totalPages} / ${targetPages}` },
+                { label: "Batches", value: `${completedBatches.length} / ${expectedBatches || "?"}` },
               ].map(({ label, value }) => (
                 <div key={label} className="px-3 py-2.5" style={{ background: "rgba(0,0,0,0.15)" }}>
                   <div className="text-[9px] uppercase tracking-widest text-parchment-500/40 mb-0.5">{label}</div>
@@ -497,6 +576,10 @@ export default function GeneratingPage() {
   const [modelName, setModelName] = useState<string | undefined>(undefined);
   const startedRef = useRef(false);
 
+  const kickWorker = async () => {
+    await fetch("/api/jobs/run", { method: "POST" }).catch(() => undefined);
+  };
+
   const handleApprove = async () => {
     if (!project) return;
     setApprovalBusy("approving");
@@ -506,6 +589,7 @@ export default function GeneratingPage() {
         const d = await r.json().catch(() => ({}));
         throw new Error((d as { error?: string }).error ?? `HTTP ${r.status}`);
       }
+      await kickWorker();
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -522,6 +606,7 @@ export default function GeneratingPage() {
         const d = await r.json().catch(() => ({}));
         throw new Error((d as { error?: string }).error ?? `HTTP ${r.status}`);
       }
+      await kickWorker();
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : String(err));
     } finally {
@@ -577,6 +662,7 @@ export default function GeneratingPage() {
           throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
         }
         const { projectId } = (await res.json()) as { projectId: string };
+        await fetch("/api/jobs/run", { method: "POST" }).catch(() => undefined);
         pollProject(projectId);
       } catch (err) {
         setErrorMessage(err instanceof Error ? err.message : String(err));
@@ -597,6 +683,9 @@ export default function GeneratingPage() {
             setProject(p);
             if (p.status === "complete") { stopped = true; setTimeout(() => router.push(`/reader?id=${id}`), 1200); return; }
             if (p.status === "failed") { stopped = true; setErrorMessage(p.error ?? "Generation failed"); return; }
+            if (p.status !== "awaiting_approval") {
+              fetch("/api/jobs/run", { method: "POST" }).catch(() => undefined);
+            }
           }
         } catch { /* retry */ }
         setTimeout(tick, 1500);
@@ -606,10 +695,35 @@ export default function GeneratingPage() {
   }, [router]);
 
   const progressFraction = project ? Math.min(1, project.totalWords / Math.max(1, project.targetWords)) : 0;
+
+  // ─── Linear progress + ETA based on completed batch durations ───
+  const completedBatchEvents = project?.events.filter((e) => e.type === "batch_complete") ?? [];
+  const batchDurations = completedBatchEvents
+    .map((e) => e.durationMs ?? 0)
+    .filter((ms) => ms > 0);
+  const avgBatchMs = batchDurations.length
+    ? batchDurations.reduce((s, v) => s + v, 0) / batchDurations.length
+    : null;
+  const expectedBatchesSafe = Math.max(project?.expectedBatches ?? 0, completedBatchEvents.length);
+  const remainingBatches = Math.max(0, expectedBatchesSafe - completedBatchEvents.length);
+  const etaMs =
+    avgBatchMs != null && expectedBatchesSafe > 0 && project?.status !== "complete"
+      ? Math.round(avgBatchMs * remainingBatches)
+      : null;
+
+  // Linear progress: prefer batch-count ratio once writing has begun (more linear than word ratio)
+  const batchProgress =
+    expectedBatchesSafe > 0 ? completedBatchEvents.length / expectedBatchesSafe : 0;
+  const linearFraction =
+    project?.status === "complete"
+      ? 1
+      : expectedBatchesSafe > 0 && completedBatchEvents.length > 0
+        ? Math.min(0.98, batchProgress)
+        : progressFraction;
   let currentStep = 0;
   if (!project) currentStep = 0;
   else if (project.status === "complete") currentStep = steps.length;
-  else if (project.status === "pending") currentStep = 0;
+  else if (project.status === "pending" || project.status === "queued") currentStep = 0;
   else if (project.status === "planning") currentStep = 1;
   else if (project.status === "awaiting_approval") currentStep = 2;
   else if (project.batches.length === 0) currentStep = 2;
@@ -626,7 +740,7 @@ export default function GeneratingPage() {
   const currentChapterTitle = lastBatch?.chapterTitle;
 
   const done = project?.status === "complete";
-  const progress = done ? 100 : Math.min(96, Math.round(progressFraction * 100));
+  const progress = done ? 100 : Math.min(98, Math.round(linearFraction * 100));
 
   return (
     <div className="min-h-screen bg-ink-500 flex flex-col items-center justify-center relative overflow-hidden">
@@ -703,7 +817,14 @@ export default function GeneratingPage() {
                       ? "Architecting book blueprint — characters, chapters, and scene beats…"
                       : (
                           <>
-                            {project.totalWords.toLocaleString()} / {project.targetWords.toLocaleString()} words · batch {Math.max(1, project.batches.length)} of ~{project.expectedBatches}
+                            {project.totalWords.toLocaleString()} / {project.targetWords.toLocaleString()} words
+                            {" · "}~{wordsToPages(project.totalWords)} / {wordsToPages(project.targetWords)} pages
+                            {" · batch "}{Math.max(1, project.batches.length)} of ~{project.expectedBatches}
+                            {etaMs != null && (
+                              <span className="block text-xs text-parchment-500/70 mt-1">
+                                ~{fmtDuration(etaMs)} remaining
+                              </span>
+                            )}
                             {currentChapterNum && currentChapterTitle && (
                               <span className="block text-xs text-parchment-500/70 mt-1 italic">
                                 Chapter {currentChapterNum} — “{currentChapterTitle}”
@@ -781,6 +902,9 @@ export default function GeneratingPage() {
               model={modelName}
               totalWords={project.totalWords}
               targetWords={project.targetWords}
+              batches={project.batches}
+              expectedBatches={project.expectedBatches}
+              etaMs={etaMs}
             />
           </motion.div>
         )}

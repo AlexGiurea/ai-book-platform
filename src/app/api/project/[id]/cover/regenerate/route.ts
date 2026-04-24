@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { coverAgent, store } from "@/lib/agent";
+import { store } from "@/lib/agent";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -9,7 +9,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const project = store.getProject(id);
+  const project = await store.getProject(id);
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
@@ -23,9 +23,7 @@ export async function POST(
     );
   }
 
-  coverAgent.generateCover(id).catch((err) => {
-    console.error(`[folio] cover regeneration failed for ${id}:`, err);
-  });
+  await store.enqueueJob(id, "cover", { force: true });
 
   return NextResponse.json({ ok: true, projectId: id });
 }

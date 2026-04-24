@@ -160,6 +160,7 @@ export interface BatchEvent {
 
 export type ProjectStatus =
   | "pending"
+  | "queued"
   | "planning"
   | "awaiting_approval"
   | "writing"
@@ -193,4 +194,22 @@ export interface FullContext {
   targetWords: number;
   expectedBatches: number;
   currentBatchNumber: number;
+}
+
+export type GenerationJobType = "plan" | "write" | "cover";
+export type GenerationJobStatus = "queued" | "running" | "complete" | "failed";
+
+export interface GenerationJob {
+  id: string;
+  projectId: string;
+  type: GenerationJobType;
+  status: GenerationJobStatus;
+  attempts: number;
+  runAfter: string;
+  lockedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
 }

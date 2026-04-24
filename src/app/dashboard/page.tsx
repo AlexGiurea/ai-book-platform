@@ -28,7 +28,7 @@ type LibraryBook = Omit<Book, "chapters">;
 
 interface ApiProject {
   id: string;
-  status: "pending" | "planning" | "awaiting_approval" | "writing" | "complete" | "failed";
+  status: "pending" | "queued" | "planning" | "awaiting_approval" | "writing" | "complete" | "failed";
   totalWords: number;
   title?: string;
   synopsis?: string;
@@ -82,7 +82,7 @@ function paletteForId(id: string) {
 
 function projectStatusToLibraryStatus(status: ApiProject["status"]): LibraryBook["status"] {
   if (status === "complete") return "complete";
-  if (status === "writing" || status === "planning" || status === "pending") return "generating";
+  if (status === "writing" || status === "planning" || status === "pending" || status === "queued") return "generating";
   return "draft";
 }
 

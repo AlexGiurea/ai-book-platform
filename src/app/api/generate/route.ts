@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { store, bookComposer } from "@/lib/agent";
+import { store } from "@/lib/agent";
 import type { ProjectInput } from "@/lib/agent";
 
 export const runtime = "nodejs";
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const project = store.createProject({
+  const project = await store.createProject({
     idea: typeof input.idea === "string" ? input.idea : "",
     preferences: {
       genre: input.preferences.genre ?? "",
@@ -57,9 +57,7 @@ export async function POST(request: Request) {
     },
   });
 
-  bookComposer.planBook(project.id).catch((err) => {
-    console.error(`[folio] planBook failed for ${project.id}:`, err);
-  });
+  await store.enqueueJob(project.id, "plan");
 
   return NextResponse.json({ projectId: project.id });
 }

@@ -12,7 +12,7 @@ const PLANNER_MAX_OUTPUT_TOKENS = 16000;
 
 export class PlannerAgent {
   async generateBible(projectId: string): Promise<StoryBible> {
-    const project = store.getProject(projectId);
+    const project = await store.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
 
     const client = getOpenAIClient();
@@ -24,7 +24,7 @@ export class PlannerAgent {
       Math.ceil(totalBatches / TARGET_BATCHES_PER_CHAPTER)
     );
 
-    store.appendEvent(projectId, { type: "planning_start", model });
+    await store.appendEvent(projectId, { type: "planning_start", model });
     const started = Date.now();
 
     const instructions = buildPlannerSystemPrompt();
@@ -152,8 +152,8 @@ export class PlannerAgent {
       createdAt: new Date().toISOString(),
     };
 
-    store.setBible(projectId, bible);
-    store.appendEvent(projectId, {
+    await store.setBible(projectId, bible);
+    await store.appendEvent(projectId, {
       type: "planning_complete",
       model,
       durationMs: Date.now() - started,
