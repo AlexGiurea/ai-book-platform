@@ -1,6 +1,6 @@
 # GPT-5.5 Book Generation Cost Estimate
 
-Source: OpenAI API pricing published April 24, 2026 lists GPT-5.5 at $5.00 per 1M input tokens, $0.50 per 1M cached input tokens, and $30.00 per 1M output tokens.
+Source: OpenAI API pricing, accessed April 24, 2026, lists GPT-5.5 at $5.00 per 1M input tokens, $0.50 per 1M cached input tokens, and $30.00 per 1M output tokens.
 
 These estimates are for text generation only. They exclude cover/image generation, database/storage costs, Vercel costs, and unusually large uploaded context files.
 
