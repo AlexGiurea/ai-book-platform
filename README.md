@@ -6,7 +6,7 @@ The app guides a project from idea capture through planning, approval, drafting,
 
 ## Live App
 
-Vercel deployment: _pending_
+Vercel deployment: [https://ai-book-platform-34otkfc6w-alex-giureas-projects.vercel.app](https://ai-book-platform-34otkfc6w-alex-giureas-projects.vercel.app)
 
 ## Features
 
