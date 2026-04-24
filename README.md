@@ -46,7 +46,7 @@ Add your OpenAI API key:
 
 ```bash
 OPENAI_API_KEY=your_openai_api_key
-OPENAI_MODEL=gpt-5.1
+OPENAI_MODEL=gpt-5.5
 OPENAI_IMAGE_MODEL=gpt-image-2
 ```
 
@@ -74,7 +74,7 @@ npm run test:cover-image
 | Variable | Required | Description |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Yes | OpenAI API key used by the planning, writing, and image agents. |
-| `OPENAI_MODEL` | No | Text model used for book planning and writing. Defaults to `gpt-5.1`. |
+| `OPENAI_MODEL` | No | Text model used for book planning and writing. Defaults to `gpt-5.5`. |
 | `OPENAI_IMAGE_MODEL` | No | Image model used for cover generation. Defaults to `gpt-image-2`. |
 | `DATABASE_URL` | Yes for persistence | Neon Postgres connection string used for durable projects, batches, events, and jobs. |
 | `BLOB_READ_WRITE_TOKEN` | Yes for persistent covers | Vercel Blob token used to persist generated cover images. |

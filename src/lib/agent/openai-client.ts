@@ -15,7 +15,7 @@ export function getOpenAIClient(): OpenAI {
 }
 
 export function getModelName(): string {
-  return process.env.OPENAI_MODEL ?? "gpt-5.1";
+  return process.env.OPENAI_MODEL ?? "gpt-5.5";
 }
 
 export function getImageModelName(): string {
