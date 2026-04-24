@@ -3,7 +3,7 @@ import { store, bookComposer } from "@/lib/agent";
 import type { ProjectInput } from "@/lib/agent";
 
 export const runtime = "nodejs";
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   let body: unknown;
