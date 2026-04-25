@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, LayoutDashboard, Plus, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavbarProps {
@@ -13,8 +13,9 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
   const pathname = usePathname();
 
   const navLinks = [
-    { href: "/dashboard", label: "Library", icon: LayoutDashboard },
-    { href: "/reader", label: "Example Book", icon: BookOpen },
+    { href: "/product", label: "Product" },
+    { href: "/pricing", label: "Pricing" },
+    { href: "/about", label: "About" },
   ];
 
   return (
@@ -40,7 +41,7 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
 
         {/* Nav links */}
         <div className="hidden md:flex items-center gap-1">
-          {navLinks.map(({ href, label, icon: Icon }) => (
+          {navLinks.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
@@ -51,7 +52,6 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
                   : "text-ink-300 hover:text-ink-500 hover:bg-parchment-200/60"
               )}
             >
-              <Icon size={14} />
               {label}
             </Link>
           ))}
@@ -62,8 +62,8 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
           href="/create"
           className="flex items-center gap-1.5 px-4 py-2 bg-ink-500 hover:bg-ink-400 text-parchment-50 text-sm font-medium rounded-lg transition-all duration-150 shadow-warm-sm hover:shadow-warm"
         >
-          <Plus size={14} />
-          New Book
+          Start creating
+          <ArrowRight size={13} />
         </Link>
       </div>
     </nav>

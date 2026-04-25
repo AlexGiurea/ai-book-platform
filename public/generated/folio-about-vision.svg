@@ -1,0 +1,71 @@
+<svg width="1400" height="1100" viewBox="0 0 1400 1100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1400" height="1100" rx="72" fill="#F7F3EC"/>
+  <circle cx="332" cy="242" r="260" fill="#FDE0B8" opacity="0.68"/>
+  <circle cx="1058" cy="806" r="330" fill="#DDD9EC" opacity="0.62"/>
+  <circle cx="703" cy="536" r="424" fill="#FDFBF7" opacity="0.74"/>
+  <g filter="url(#softShadow)">
+    <path d="M423 678C423 612 476 558 542 558H856C922 558 975 612 975 678V816C975 840 956 859 932 859H466C442 859 423 840 423 816V678Z" fill="#1C1614"/>
+    <path d="M460 692C460 646 497 608 543 608H694V823H490C473 823 460 810 460 793V692Z" fill="#FDFBF7"/>
+    <path d="M706 608H855C901 608 938 646 938 692V793C938 810 925 823 908 823H706V608Z" fill="#FDFBF7"/>
+    <path d="M694 608C670 642 658 677 658 714C658 751 670 787 694 823" stroke="#C97D30" stroke-width="5" stroke-linecap="round"/>
+    <path d="M706 608C730 642 742 677 742 714C742 751 730 787 706 823" stroke="#C97D30" stroke-width="5" stroke-linecap="round"/>
+    <path d="M523 681H630" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M522 724H621" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M522 766H646" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M778 681H879" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M778 724H848" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M778 766H890" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g filter="url(#glow)">
+    <circle cx="700" cy="410" r="58" fill="#F4A043"/>
+    <circle cx="700" cy="410" r="24" fill="#FDFBF7"/>
+  </g>
+  <g stroke="#C97D30" stroke-width="4" stroke-linecap="round" opacity="0.86">
+    <path d="M700 333V228"/>
+    <path d="M748 350L834 264"/>
+    <path d="M653 350L568 264"/>
+    <path d="M772 410H888"/>
+    <path d="M628 410H512"/>
+    <path d="M739 466L821 548"/>
+    <path d="M661 466L579 548"/>
+  </g>
+  <g filter="url(#paperShadow)">
+    <path d="M238 364C275 330 335 336 367 376L450 481C460 494 458 512 446 523L308 648C296 659 277 658 267 645L184 540C152 500 162 398 238 364Z" fill="#FDFBF7"/>
+    <path d="M232 441H344" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M249 482H370" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M267 523H340" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g filter="url(#paperShadow)">
+    <path d="M1057 326C1110 302 1174 326 1197 380L1259 525C1267 544 1258 566 1239 574L1085 640C1066 648 1044 639 1036 620L974 475C951 421 1004 350 1057 326Z" fill="#FDFBF7"/>
+    <path d="M1059 423H1162" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M1076 466H1194" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+    <path d="M1093 509H1169" stroke="#DDD3C0" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g opacity="0.85">
+    <circle cx="313" cy="272" r="7" fill="#8B84B0"/>
+    <circle cx="1159" cy="262" r="6" fill="#C97D30"/>
+    <circle cx="1024" cy="166" r="5" fill="#8B84B0"/>
+    <circle cx="230" cy="759" r="6" fill="#C97D30"/>
+    <circle cx="1137" cy="820" r="8" fill="#8B84B0"/>
+    <circle cx="698" cy="170" r="5" fill="#C97D30"/>
+  </g>
+  <g stroke="#1C1614" stroke-width="2" opacity="0.18">
+    <path d="M313 272L568 264L700 228L834 264L1024 166L1159 262"/>
+    <path d="M230 759L579 548L700 410L821 548L1137 820"/>
+  </g>
+  <defs>
+    <filter id="softShadow" x="343" y="498" width="712" height="461" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="36" stdDeviation="38" flood-color="#1C1614" flood-opacity="0.18"/>
+    </filter>
+    <filter id="paperShadow" x="112" y="262" width="1216" height="442" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="26" stdDeviation="28" flood-color="#1C1614" flood-opacity="0.13"/>
+    </filter>
+    <filter id="glow" x="578" y="288" width="244" height="244" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="28" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+</svg>
