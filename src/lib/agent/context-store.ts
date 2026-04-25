@@ -10,6 +10,7 @@ import type {
   LengthPreset,
   ProjectInput,
   ProjectStatus,
+  RetrievalDocumentRecord,
   StoryBible,
 } from "./types";
 
@@ -55,6 +56,7 @@ type ProjectRow = {
   title: string | null;
   synopsis: string | null;
   bible: StoryBible | null;
+  vector_store_id: string | null;
   cover_status: BookProject["coverStatus"];
   cover: BookCover | null;
   cover_error: string | null;
@@ -135,6 +137,7 @@ function mapProject(row: ProjectRow, batches: Batch[], events: BatchEvent[]): Bo
     input: row.input,
     status: row.status,
     bible: row.bible ?? undefined,
+    vectorStoreId: row.vector_store_id ?? undefined,
     batches,
     events,
     targetWords: row.target_words,
@@ -154,6 +157,7 @@ function mapProject(row: ProjectRow, batches: Batch[], events: BatchEvent[]): Bo
 class MemoryStore {
   projects = new Map<string, BookProject>();
   jobs = new Map<string, GenerationJob>();
+  retrievalDocuments = new Map<string, RetrievalDocumentRecord>();
 }
 
 declare global {
@@ -278,6 +282,209 @@ export class ContextStore {
           updated_at = ${now}
       where id = ${id}
     `;
+
+    await this.replaceBibleMemory(id, bible);
+  }
+
+  private async replaceBibleMemory(id: string, bible: StoryBible): Promise<void> {
+    if (!this.persistent) return;
+
+    const sql = getSql();
+    await sql`delete from canon_facts where project_id = ${id}`;
+    await sql`delete from characters where project_id = ${id}`;
+    await sql`delete from locations where project_id = ${id}`;
+    await sql`delete from timeline_events where project_id = ${id}`;
+    await sql`delete from chapter_briefs where project_id = ${id}`;
+
+    const canonFacts = [
+      ["identity", "Title", bible.title],
+      ["identity", "Logline", bible.logline],
+      ["identity", "Premise", bible.premise],
+      ["identity", "Synopsis", bible.synopsis],
+      ["setting", "World", bible.setting.world],
+      ["setting", "Era", bible.setting.era],
+      ["setting", "Rules", bible.setting.rules],
+      ["setting", "Atmosphere", bible.setting.atmosphere],
+      ["style", "Voice guide", bible.voiceGuide],
+      ["style", "Style guide", bible.styleGuide],
+      ["structure", "Act breakdown", bible.structure.actBreakdown],
+      ["structure", "Inciting incident", bible.structure.inciting],
+      ["structure", "Midpoint", bible.structure.midpoint],
+      ["structure", "Climax", bible.structure.climax],
+      ["structure", "Resolution", bible.structure.resolution],
+      ...bible.themes.map((theme, index) => [
+        "theme",
+        `Theme ${index + 1}`,
+        theme,
+      ]),
+    ];
+
+    for (const [category, label, content] of canonFacts) {
+      await sql`
+        insert into canon_facts (
+          id, project_id, category, label, content, source_type, source_id
+        ) values (
+          ${makeId()}, ${id}, ${category}, ${label}, ${content}, 'bible', 'story_bible'
+        )
+      `;
+    }
+
+    for (const character of bible.characters) {
+      await sql`
+        insert into characters (
+          id, project_id, name, role, description, voice, motivation,
+          arc, relationships, secrets, source_type, source_id
+        ) values (
+          ${makeId()}, ${id}, ${character.name}, ${character.role},
+          ${character.description}, ${character.voice}, ${character.motivation},
+          ${character.arc}, ${character.relationships}, ${character.secrets ?? null},
+          'bible', ${character.name}
+        )
+      `;
+    }
+
+    const locationMap = new Map<string, { rules?: string; atmosphere?: string }>();
+    locationMap.set(bible.setting.world, {
+      rules: bible.setting.rules,
+      atmosphere: bible.setting.atmosphere,
+    });
+    for (const batch of bible.batches) {
+      if (!locationMap.has(batch.settingLocation)) {
+        locationMap.set(batch.settingLocation, {});
+      }
+    }
+
+    for (const [name, meta] of locationMap.entries()) {
+      const relatedBatches = bible.batches
+        .filter((batch) => batch.settingLocation === name)
+        .slice(0, 4)
+        .map((batch) => `Batch ${batch.number}: ${batch.purpose}`)
+        .join("\n");
+      const description =
+        name === bible.setting.world
+          ? bible.setting.world
+          : relatedBatches || `Location used in ${bible.title}.`;
+      await sql`
+        insert into locations (
+          id, project_id, name, description, rules, atmosphere, source_type, source_id
+        ) values (
+          ${makeId()}, ${id}, ${name}, ${description},
+          ${meta.rules ?? null}, ${meta.atmosphere ?? null}, 'bible', ${name}
+        )
+      `;
+    }
+
+    const timelineEvents = [
+      ["Inciting incident", bible.structure.inciting, Math.max(1, Math.round(bible.totalBatches * 0.12))],
+      ["First act turn", bible.structure.actBreakdown, Math.max(1, Math.round(bible.totalBatches * 0.25))],
+      ["Midpoint", bible.structure.midpoint, Math.max(1, Math.round(bible.totalBatches * 0.5))],
+      ["Climax", bible.structure.climax, Math.max(1, Math.round(bible.totalBatches * 0.9))],
+      ["Resolution", bible.structure.resolution, bible.totalBatches],
+    ] as const;
+
+    let sequence = 1;
+    for (const [label, description, batchNumber] of timelineEvents) {
+      await sql`
+        insert into timeline_events (
+          id, project_id, sequence_index, label, description,
+          related_batch_number, source_type, source_id
+        ) values (
+          ${makeId()}, ${id}, ${sequence++}, ${label}, ${description},
+          ${batchNumber}, 'bible', ${label}
+        )
+      `;
+    }
+
+    for (const chapter of bible.chapters) {
+      await sql`
+        insert into chapter_briefs (
+          project_id, chapter_number, title, summary, arc_purpose,
+          opening_hook, closing_beat, batch_start, batch_end, target_words
+        ) values (
+          ${id}, ${chapter.number}, ${chapter.title}, ${chapter.summary},
+          ${chapter.arcPurpose}, ${chapter.openingHook}, ${chapter.closingBeat},
+          ${chapter.batchStart}, ${chapter.batchEnd}, ${chapter.targetWords}
+        )
+      `;
+    }
+  }
+
+  async setVectorStoreId(id: string, vectorStoreId: string): Promise<void> {
+    const now = new Date().toISOString();
+    if (!this.persistent) {
+      const p = memory.projects.get(id);
+      if (!p) return;
+      p.vectorStoreId = vectorStoreId;
+      p.updatedAt = now;
+      return;
+    }
+
+    await getSql()`
+      update projects
+      set vector_store_id = ${vectorStoreId},
+          updated_at = ${now}
+      where id = ${id}
+    `;
+  }
+
+  async hasRetrievalDocument(
+    projectId: string,
+    sourceType: string,
+    sourceId: string,
+    contentHash: string,
+    vectorStoreId: string
+  ): Promise<boolean> {
+    if (!this.persistent) {
+      return Array.from(memory.retrievalDocuments.values()).some(
+        (doc) =>
+          doc.projectId === projectId &&
+          doc.sourceType === sourceType &&
+          doc.sourceId === sourceId &&
+          doc.contentHash === contentHash &&
+          doc.vectorStoreId === vectorStoreId
+      );
+    }
+
+    const rows = (await getSql()`
+      select id from retrieval_documents
+      where project_id = ${projectId}
+        and source_type = ${sourceType}
+        and source_id = ${sourceId}
+        and content_hash = ${contentHash}
+        and vector_store_id = ${vectorStoreId}
+      limit 1
+    `) as { id: string }[];
+    return Boolean(rows[0]);
+  }
+
+  async recordRetrievalDocument(
+    doc: Omit<RetrievalDocumentRecord, "id" | "indexedAt">
+  ): Promise<RetrievalDocumentRecord> {
+    const indexedAt = new Date().toISOString();
+    const full: RetrievalDocumentRecord = {
+      ...doc,
+      id: makeId(),
+      indexedAt,
+    };
+
+    if (!this.persistent) {
+      memory.retrievalDocuments.set(full.id, full);
+      return full;
+    }
+
+    await getSql()`
+      insert into retrieval_documents (
+        id, project_id, source_type, source_id, title, content_hash,
+        vector_store_id, openai_file_id, vector_store_file_id, metadata, indexed_at
+      ) values (
+        ${full.id}, ${full.projectId}, ${full.sourceType}, ${full.sourceId},
+        ${full.title}, ${full.contentHash}, ${full.vectorStoreId},
+        ${full.openaiFileId}, ${full.vectorStoreFileId ?? null},
+        ${JSON.stringify(full.metadata)}::jsonb, ${indexedAt}
+      )
+      on conflict (project_id, source_type, source_id, content_hash, vector_store_id) do nothing
+    `;
+    return full;
   }
 
   async appendBatch(

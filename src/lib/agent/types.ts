@@ -134,6 +134,9 @@ export type BatchEventType =
   | "project_start"
   | "planning_start"
   | "planning_complete"
+  | "memory_index_start"
+  | "memory_index_complete"
+  | "memory_index_failed"
   | "cover_start"
   | "cover_complete"
   | "cover_failed"
@@ -172,6 +175,7 @@ export interface BookProject {
   input: ProjectInput;
   status: ProjectStatus;
   bible?: StoryBible;
+  vectorStoreId?: string;
   batches: Batch[];
   events: BatchEvent[];
   targetWords: number;
@@ -212,4 +216,18 @@ export interface GenerationJob {
   error?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RetrievalDocumentRecord {
+  id: string;
+  projectId: string;
+  sourceType: string;
+  sourceId: string;
+  title: string;
+  contentHash: string;
+  vectorStoreId: string;
+  openaiFileId: string;
+  vectorStoreFileId?: string;
+  metadata: Record<string, string | number | boolean>;
+  indexedAt: string;
 }

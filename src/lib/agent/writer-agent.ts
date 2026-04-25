@@ -3,6 +3,7 @@ import { getModelName, getOpenAIClient } from "./openai-client";
 import { store } from "./context-store";
 import { BatchOutputSchema } from "./schemas";
 import { buildWriterSystemPrompt, buildWriterUserPrompt } from "./prompts";
+import { indexBatchMemory, retrieveRelevantMemory } from "./memory-index";
 import { stripEmDashes } from "./sanitize";
 import type { BatchBlueprint, StoryBible } from "./types";
 
@@ -37,6 +38,15 @@ export class WriterAgent {
       .slice(-ROLLING_SUMMARY_COUNT);
 
     const isFinalBatch = blueprint.number >= bible.totalBatches;
+    let retrievedMemory = "";
+    try {
+      retrievedMemory = await retrieveRelevantMemory(projectId, blueprint);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[folio] retrieval failed for ${projectId} batch ${blueprint.number}: ${msg}`
+      );
+    }
 
     await store.appendEvent(projectId, {
       type: "batch_start",
@@ -52,6 +62,7 @@ export class WriterAgent {
       blueprint,
       recentBatches,
       recentSummaries: olderSummaries,
+      retrievedMemory,
       lastOpenThreads,
       isFinalBatch,
       totalWords: project.totalWords,
@@ -84,6 +95,17 @@ export class WriterAgent {
       chapterTitle: blueprint.chapterTitle,
       chapterSummary: cleanSummary,
     });
+
+    if (appended) {
+      try {
+        await indexBatchMemory(projectId, appended);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[folio] batch memory indexing failed for ${projectId} batch ${appended.batchNumber}: ${msg}`
+        );
+      }
+    }
 
     const updated = await store.getProject(projectId);
     await store.appendEvent(projectId, {

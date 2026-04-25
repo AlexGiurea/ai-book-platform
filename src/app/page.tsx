@@ -468,18 +468,24 @@ export default function LandingPage() {
             Folio
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="hidden md:flex items-center gap-3">
           <Link
-            href="/reader"
+            href="/product"
             className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
           >
-            See an example
+            Product
           </Link>
           <Link
-            href="/dashboard"
+            href="/pricing"
             className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
           >
-            Library
+            Pricing
+          </Link>
+          <Link
+            href="/about"
+            className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
+          >
+            About
           </Link>
           <Link
             href="/create"

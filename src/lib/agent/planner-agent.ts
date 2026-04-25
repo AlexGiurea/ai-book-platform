@@ -3,6 +3,7 @@ import { getModelName, getOpenAIClient } from "./openai-client";
 import { store, TARGET_BATCHES_PER_CHAPTER, WORDS_PER_BATCH } from "./context-store";
 import { StoryBibleSchema } from "./schemas";
 import { buildPlannerSystemPrompt, buildPlannerUserPrompt } from "./prompts";
+import { indexProjectMemory } from "./memory-index";
 import { stripEmDashes } from "./sanitize";
 import type { BatchBlueprint, StoryBible } from "./types";
 
@@ -153,6 +154,19 @@ export class PlannerAgent {
     };
 
     await store.setBible(projectId, bible);
+    await store.appendEvent(projectId, { type: "memory_index_start", model });
+    try {
+      await indexProjectMemory(projectId, bible);
+      await store.appendEvent(projectId, { type: "memory_index_complete", model });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await store.appendEvent(projectId, {
+        type: "memory_index_failed",
+        error: msg,
+        model,
+      });
+      console.warn(`[folio] memory indexing failed for ${projectId}: ${msg}`);
+    }
     await store.appendEvent(projectId, {
       type: "planning_complete",
       model,

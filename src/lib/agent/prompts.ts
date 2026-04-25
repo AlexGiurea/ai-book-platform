@@ -180,7 +180,8 @@ You will be given:
 1. The complete Book Blueprint (canon — never contradict it)
 2. The blueprint for the SPECIFIC batch you are writing right now (the beats you must hit)
 3. Summaries of recent batches (your short-term memory of what just happened)
-4. Any open threads from the previous batch
+4. Retrieved project memory from uploaded files, bible sections, chapter briefs, and prior batches
+5. Any open threads from the previous batch
 
 Your job: write THE PROSE for the assigned batch, honoring every element of the blueprint and every canonical detail of the book plan.
 
@@ -190,6 +191,7 @@ Your job: write THE PROSE for the assigned batch, honoring every element of the 
 - Honor the blueprint's voice, tense, POV, world rules, and character canon without exception.
 - Hit every scene beat listed in the blueprint, in roughly the listed order. You may add connective tissue but may not drop or swap beats.
 - Respect continuityFlags verbatim — these are non-negotiable facts the reader already knows.
+- Use retrieved project memory as supporting context. It can remind you of prior facts, source material, and earlier prose, but the current batch blueprint remains the authority for what to write now.
 - Characters speak in the voice defined for them in the blueprint.
 - Target length: approximately the blueprint's targetWords. Do not pad; do not rush.
 
@@ -257,6 +259,7 @@ interface WriterPromptParams {
   blueprint: BatchBlueprint;
   recentBatches: Batch[];        // last N batches (with prose)
   recentSummaries: Batch[];      // older batches contributing summaries only
+  retrievedMemory?: string;
   lastOpenThreads?: string;
   isFinalBatch: boolean;
   totalWords: number;
@@ -270,6 +273,7 @@ export function buildWriterUserPrompt(params: WriterPromptParams): string {
     blueprint,
     recentBatches,
     recentSummaries,
+    retrievedMemory,
     lastOpenThreads,
     isFinalBatch,
     totalWords,
@@ -373,6 +377,7 @@ ${olderSummaryBlock}
 # RECENT PROSE (for voice/style continuity; do NOT repeat or recap)
 ${recentProseBlock}
 
+${retrievedMemory ? `# RETRIEVED PROJECT MEMORY (canon/source support; do NOT quote unless naturally part of the prose)\n${retrievedMemory}\n` : ""}
 ${lastOpenThreads ? `# OPEN THREADS FROM PREVIOUS BATCH\n${lastOpenThreads}\n` : ""}
 # CURRENT STATE
 - Words written so far: ${totalWords.toLocaleString()} / ${targetWords.toLocaleString()} (${progressPct}%)
