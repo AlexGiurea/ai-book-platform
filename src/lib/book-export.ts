@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { PDFDocument } from "pdf-lib";
 import JSZip from "jszip";
 import type { BookProject } from "@/lib/agent/types";
 
@@ -7,6 +10,8 @@ export interface ExportBook {
   title: string;
   author: string;
   synopsis: string;
+  /** When set, a full-page image is inserted as page 2 in the PDF (after the title page). */
+  coverImageUrl?: string;
   chapters: Array<{
     number: number;
     title: string;
@@ -92,8 +97,92 @@ function projectToExportBook(project: BookProject): ExportBook {
     title,
     author: "Folio",
     synopsis: project.synopsis || project.bible?.synopsis || "",
+    coverImageUrl: project.cover?.imageUrl,
     chapters,
   };
+}
+
+async function loadCoverImageBytes(
+  coverImageUrl: string
+): Promise<Uint8Array | null> {
+  const trimmed = coverImageUrl.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith("/")) {
+    const filePath = path.join(process.cwd(), "public", trimmed.replace(/^\//, ""));
+    try {
+      const buf = await readFile(filePath);
+      return new Uint8Array(buf);
+    } catch {
+      return null;
+    }
+  }
+
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+
+  const response = await fetch(url, {
+    redirect: "follow",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) return null;
+  const arrayBuffer = await response.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
+}
+
+async function buildOnePageImagePdf(imageBytes: Uint8Array): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([PDF_PAGE_WIDTH, PDF_PAGE_HEIGHT]);
+  const isPng =
+    imageBytes.length >= 8 &&
+    imageBytes[0] === 0x89 &&
+    imageBytes[1] === 0x50 &&
+    imageBytes[2] === 0x4e &&
+    imageBytes[3] === 0x47;
+  const image = isPng
+    ? await doc.embedPng(imageBytes)
+    : await doc.embedJpg(imageBytes);
+  const margin = 28;
+  const maxW = PDF_PAGE_WIDTH - margin * 2;
+  const maxH = PDF_PAGE_HEIGHT - margin * 2;
+  const scale = Math.min(maxW / image.width, maxH / image.height);
+  const drawW = image.width * scale;
+  const drawH = image.height * scale;
+  const x = (PDF_PAGE_WIDTH - drawW) / 2;
+  const y = (PDF_PAGE_HEIGHT - drawH) / 2;
+  page.drawImage(image, { x, y, width: drawW, height: drawH });
+  const pdf = await doc.save();
+  return Buffer.from(pdf);
+}
+
+/** Inserts a one-page image PDF so it becomes the second page of the manuscript (index 1). */
+async function insertCoverAfterTitlePage(
+  manuscript: Buffer,
+  coverOnePagePdf: Buffer
+): Promise<Buffer> {
+  const out = await PDFDocument.create();
+  const ms = await PDFDocument.load(manuscript);
+  const cov = await PDFDocument.load(coverOnePagePdf);
+  const msCount = ms.getPageCount();
+  if (msCount < 1) return manuscript;
+  const [p0] = await out.copyPages(ms, [0]);
+  out.addPage(p0);
+  const [c0] = await out.copyPages(cov, [0]);
+  out.addPage(c0);
+  if (msCount > 1) {
+    const rest = await out.copyPages(
+      ms,
+      Array.from({ length: msCount - 1 }, (_, i) => i + 1)
+    );
+    rest.forEach((p) => out.addPage(p));
+  }
+  const saved = await out.save();
+  return Buffer.from(saved);
 }
 
 type PdfTextOp = {
@@ -356,10 +445,22 @@ export async function exportBook(
     };
   }
 
+  let pdfData = buildPdf(book);
+  if (book.coverImageUrl) {
+    const imageBytes = await loadCoverImageBytes(book.coverImageUrl);
+    if (imageBytes) {
+      try {
+        const coverPdf = await buildOnePageImagePdf(imageBytes);
+        pdfData = await insertCoverAfterTitlePage(pdfData, coverPdf);
+      } catch {
+        // Fall back to manuscript without cover if image decode fails
+      }
+    }
+  }
   return {
     filename: `${base}.pdf`,
     contentType: "application/pdf",
-    data: buildPdf(book),
+    data: pdfData,
   };
 }
 

@@ -30,6 +30,7 @@ import {
   PinOff,
 } from "lucide-react";
 import { sampleBook, type Book, type Chapter } from "@/lib/sampleData";
+import { getExtraExampleBookById } from "@/lib/exampleReaderBooks";
 import { stripEmDashes } from "@/lib/agent/sanitize";
 import { cn } from "@/lib/utils";
 
@@ -1949,13 +1950,31 @@ function ReaderPanel({
 function ReaderInner() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("id");
+  const sampleId = searchParams.get("sample");
+  const libraryNav = searchParams.get("library") === "1";
+
+  const staticExample = useMemo(() => {
+    if (projectId) return undefined;
+    if (!sampleId) return undefined;
+    if (sampleId === sampleBook.id) return sampleBook;
+    return getExtraExampleBookById(sampleId);
+  }, [projectId, sampleId]);
+
+  const invalidSample = Boolean(
+    !projectId && sampleId && !staticExample
+  );
 
   const [loadedBook, setLoadedBook] = useState<Book | null>(null);
   const [loading, setLoading] = useState(!!projectId);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
-  const backHref = projectId ? "/dashboard" : "/";
-  const backLabel = projectId ? "Library" : "Home";
+  const backHref = projectId
+    ? "/dashboard"
+    : libraryNav && sampleId
+      ? "/dashboard"
+      : "/";
+  const backLabel =
+    projectId || (libraryNav && sampleId) ? "Library" : "Home";
 
   useEffect(() => {
     if (!projectId) return;
@@ -2013,7 +2032,10 @@ function ReaderInner() {
   // Scrub em dashes from ALL rendered prose (sample book + agent-generated).
   // Agent output is already cleaned server-side; this also covers the demo book
   // and guarantees the user never sees a dash in the reader, ever.
-  const rawBook = loadedBook ?? sampleBook;
+  const rawBook: Book = useMemo(() => {
+    if (projectId) return loadedBook ?? sampleBook;
+    return staticExample ?? sampleBook;
+  }, [projectId, loadedBook, staticExample]);
   const book = useMemo<Book>(() => ({
     ...rawBook,
     title: stripEmDashes(rawBook.title) || rawBook.title,
@@ -2125,7 +2147,9 @@ function ReaderInner() {
           kindleEmail: kindleEmail.trim(),
           book: {
             title: book.title,
+            author: "Folio",
             synopsis: book.synopsis,
+            coverImageUrl: book.coverImageUrl,
             chapters: book.chapters.map((chapter) => ({
               number: chapter.number,
               title: chapter.title,
@@ -2149,7 +2173,7 @@ function ReaderInner() {
     } finally {
       setExportBusy(false);
     }
-  }, [book.chapters, book.synopsis, book.title, downloadFromResponse, exportFormat, kindleEmail, kindleFormat]);
+  }, [book.chapters, book.coverImageUrl, book.synopsis, book.title, downloadFromResponse, exportFormat, kindleEmail, kindleFormat]);
 
   const currentProgress = pages.length > 1 ? Math.round((currentPage / (pages.length - 1)) * 100) : 100;
 
@@ -2160,11 +2184,12 @@ function ReaderInner() {
       </div>
     );
   }
-  if (loadError) {
+  const blockError = loadError || (invalidSample ? "We couldn’t find that example book." : null);
+  if (blockError) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-parchment-100 gap-4">
-        <p className="text-ink-400">Couldn&apos;t load that book: {loadError}</p>
-        <Link href="/dashboard" className="text-ember-600 underline text-sm">Back to library</Link>
+        <p className="text-ink-400">Couldn&apos;t load that book: {blockError}</p>
+        <Link href={backHref} className="text-ember-600 underline text-sm">Back to {backLabel === "Home" ? "home" : "library"}</Link>
       </div>
     );
   }

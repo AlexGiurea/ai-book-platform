@@ -30,7 +30,9 @@ function normalizeBook(input: unknown): ExportBook | undefined {
   if (!input || typeof input !== "object") return undefined;
   const value = input as {
     title?: unknown;
+    author?: unknown;
     synopsis?: unknown;
+    coverImageUrl?: unknown;
     chapters?: unknown;
   };
   if (typeof value.title !== "string") return undefined;
@@ -56,10 +58,17 @@ function normalizeBook(input: unknown): ExportBook | undefined {
     .filter((chapter): chapter is ExportBook["chapters"][number] => Boolean(chapter));
 
   if (!chapters.length) return undefined;
+  const authorFromClient =
+    typeof value.author === "string" && value.author.trim() ? value.author.trim() : "";
+  const coverFromClient =
+    typeof value.coverImageUrl === "string" && value.coverImageUrl.trim()
+      ? value.coverImageUrl.trim()
+      : undefined;
   return {
     title: value.title.trim() || "Untitled Folio Book",
-    author: "Folio",
+    author: authorFromClient || "Folio",
     synopsis: typeof value.synopsis === "string" ? value.synopsis : "",
+    coverImageUrl: coverFromClient,
     chapters,
   };
 }

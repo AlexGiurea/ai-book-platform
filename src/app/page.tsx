@@ -646,7 +646,7 @@ function MiniLibraryCarousel() {
                       </span>
                     </div>
                     <Link
-                      href="/reader"
+                      href={`/reader?sample=${encodeURIComponent(activeBook.id)}`}
                       className="mt-7 inline-flex items-center gap-2 rounded-xl bg-ember-500 px-5 py-3 text-sm font-medium text-white shadow-ember transition hover:bg-ember-600"
                     >
                       Open sample reader
