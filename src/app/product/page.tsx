@@ -1,149 +1,267 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
   BookOpen,
+  Brain,
   CheckCircle2,
+  Compass,
   FileText,
-  ImageIcon,
   Library,
-  MessageSquareText,
+  PenLine,
+  Sparkles,
   Wand2,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
-const modules = [
-  { icon: MessageSquareText, title: "Idea intake", body: "Start from a sentence, uploaded context, character notes, or a full outline." },
-  { icon: FileText, title: "Blueprint studio", body: "Review the book plan, chapters, character arcs, voice guide, and continuity rules before writing." },
-  { icon: Wand2, title: "Chapter engine", body: "Generate durable writing batches that remember the story bible and the prose already written." },
-  { icon: ImageIcon, title: "Cover direction", body: "Create or regenerate a cover from the approved plan and keep the image tied to the book." },
-  { icon: BookOpen, title: "Immersive reader", body: "Read in Kindle-style mode or book-spread mode with search, contents, and reading controls." },
-  { icon: Library, title: "Private library", body: "Every signed-in account gets a saved shelf of books, progress, covers, and metadata." },
+const smoothEase = [0.16, 1, 0.3, 1] as const;
+
+const stages = [
+  {
+    id: "spark",
+    icon: Sparkles,
+    label: "Spark",
+    title: "The first sentence becomes a world",
+    body: "Drop in a rough premise, a scene, a research note, or a character fragment. Folio treats it like source material, not a command.",
+    artifact: "A living creative brief",
+    sample: "A lighthouse keeper receives letters dated before he was born.",
+  },
+  {
+    id: "map",
+    icon: Compass,
+    label: "Map",
+    title: "The story gets architecture",
+    body: "The system builds a story bible with chapters, arcs, continuity, tone, setting rules, and open questions for approval.",
+    artifact: "A reviewable book blueprint",
+    sample: "11 chapters, 4 character arcs, 38 continuity anchors.",
+  },
+  {
+    id: "draft",
+    icon: PenLine,
+    label: "Draft",
+    title: "Chapters arrive with memory",
+    body: "Writing happens in durable batches that remember the plan and recent prose, so the book can grow without losing itself.",
+    artifact: "A coherent manuscript",
+    sample: "Batch 19 is writing the storm sequence with prior context.",
+  },
+  {
+    id: "form",
+    icon: BookOpen,
+    label: "Form",
+    title: "The manuscript becomes an object",
+    body: "Folio pairs the draft with cover direction, reader controls, metadata, and account storage so it feels like a book you can return to.",
+    artifact: "A private finished book",
+    sample: "Cover saved, reader ready, library indexed.",
+  },
+];
+
+const craftSignals = [
+  "Canon-aware generation",
+  "Blueprint approval gate",
+  "Chapter memory",
+  "Cover direction",
+  "Private library",
+  "Plan-based model routing",
 ];
 
 export default function ProductPage() {
+  const [active, setActive] = useState(0);
+  const current = stages[active];
+  const ActiveIcon = current.icon;
+
+  const orbit = useMemo(
+    () =>
+      stages.map((stage, index) => {
+        const angle = (index / stages.length) * Math.PI * 2 - Math.PI / 2;
+        return {
+          ...stage,
+          x: Math.cos(angle) * 42 + 50,
+          y: Math.sin(angle) * 38 + 50,
+        };
+      }),
+    []
+  );
+
   return (
-    <div className="min-h-screen bg-parchment-100">
+    <div className="min-h-screen overflow-hidden bg-parchment-100">
       <Navbar />
       <main className="relative mx-auto max-w-7xl px-6 pb-24 pt-28">
-        <section className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+        <div className="pointer-events-none fixed inset-0 overflow-hidden">
+          <div className="absolute left-[-12rem] top-20 h-[34rem] w-[34rem] rounded-full bg-ember-100/55 blur-[110px]" />
+          <div className="absolute bottom-[-10rem] right-[-8rem] h-[30rem] w-[30rem] rounded-full bg-dust-100/45 blur-[110px]" />
+        </div>
+
+        <section className="relative grid min-h-[760px] gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
           <motion.div
-            initial={{ opacity: 0, y: 24 }}
+            initial={false}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
+            className="relative z-10"
           >
             <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-ember-200 bg-ember-100 px-3 py-1 text-xs font-medium text-ember-600">
               <Wand2 size={12} />
               Product
             </span>
             <h1 className="font-serif text-5xl font-bold leading-tight text-ink-500 md:text-7xl">
-              The writing studio between idea and finished book
+              A book engine that feels like opening a secret room
             </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-300">
-              Folio is built as an end-to-end workspace: capture the source
-              material, shape a story bible, approve the direction, write in
-              chapters, design a cover, and keep the finished book in your
-              private library.
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-300">
+              Folio is not a blank chatbot. It is a staged creative environment
+              where an idea moves through memory, structure, drafting, cover
+              direction, and a private reader.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <Link
                 href="/signup"
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-ember-500 px-6 py-3 text-sm font-medium text-white shadow-ember transition hover:bg-ember-600"
               >
-                Start writing
+                Start creating
                 <ArrowRight size={15} />
               </Link>
               <Link
-                href="/workflow"
-                className="inline-flex items-center justify-center rounded-xl border border-parchment-300 bg-white/70 px-6 py-3 text-sm font-medium text-ink-400 shadow-warm-sm transition hover:bg-white"
+                href="/reader"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-parchment-300 bg-white/70 px-6 py-3 text-sm font-medium text-ink-400 shadow-warm-sm transition hover:bg-white"
               >
-                See workflow
+                <BookOpen size={15} />
+                Open sample book
               </Link>
             </div>
-          </motion.div>
 
-          <motion.div
-            className="glass-card rounded-3xl p-5"
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1], delay: 0.12 }}
-          >
-            <div className="rounded-2xl border border-parchment-300/70 bg-parchment-50/80 p-5">
-              <div className="mb-5 flex items-center justify-between border-b border-parchment-300/70 pb-4">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-ember-600">
-                    Active book
-                  </p>
-                  <h2 className="mt-1 font-serif text-3xl font-bold text-ink-500">
-                    The Last Lighthouse
-                  </h2>
+            <div className="mt-10 grid max-w-xl grid-cols-2 gap-3">
+              {craftSignals.map((signal) => (
+                <div
+                  key={signal}
+                  className="flex items-center gap-2 rounded-xl border border-parchment-300/70 bg-white/65 px-3 py-2 text-sm text-ink-300 shadow-warm-sm"
+                >
+                  <CheckCircle2 size={14} className="text-sage-500" />
+                  {signal}
                 </div>
-                <span className="rounded-full bg-sage-100 px-3 py-1 text-xs font-medium text-sage-500">
-                  42,517 words
-                </span>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-[1fr_0.72fr]">
-                <div className="space-y-3">
-                  {[
-                    ["Idea", "A retired sea captain receives letters dated before his birth."],
-                    ["Blueprint", "11 chapters, 4 major arcs, continuity locked."],
-                    ["Chapter 7", "Drafting the storm sequence in batch 19."],
-                    ["Publish", "Cover, reader, and export preparation."],
-                  ].map(([label, body], index) => (
-                    <motion.div
-                      key={label}
-                      className="rounded-2xl border border-parchment-300/70 bg-white/80 p-4"
-                      initial={{ opacity: 0, y: 14 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.25 + index * 0.08, duration: 0.45 }}
-                    >
-                      <div className="flex gap-3">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-ink-500 text-sm font-semibold text-parchment-50">
-                          {index + 1}
-                        </span>
-                        <div>
-                          <p className="font-semibold text-ink-500">{label}</p>
-                          <p className="mt-1 text-sm leading-relaxed text-ink-300">{body}</p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-                <div className="rounded-2xl border border-parchment-300/70 bg-ink-500 p-4 text-parchment-50">
-                  <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-parchment-300">
-                    Library proof
-                  </p>
-                  {["Cover saved", "Reader ready", "Jobs persisted", "Owner scoped"].map((item) => (
-                    <div key={item} className="mb-3 flex items-center gap-2 text-sm text-parchment-200">
-                      <CheckCircle2 size={15} className="text-ember-400" />
-                      {item}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              ))}
             </div>
           </motion.div>
+
+          <div className="relative z-10 min-h-[680px]">
+            <motion.div
+              className="absolute inset-0 rounded-[2rem] border border-parchment-300/70 bg-white/35 shadow-warm-xl backdrop-blur"
+              animate={{ rotate: [0, 0.5, 0], y: [0, -8, 0] }}
+              transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <div className="absolute inset-5 overflow-hidden rounded-[1.55rem] border border-parchment-300/70 bg-ink-500 text-parchment-50">
+              <motion.div
+                className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full border border-ember-300/30"
+                animate={{ rotate: 360 }}
+                transition={{ duration: 36, repeat: Infinity, ease: "linear" }}
+              />
+              <motion.div
+                className="absolute left-1/2 top-1/2 h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-parchment-50/10"
+                animate={{ rotate: -360 }}
+                transition={{ duration: 52, repeat: Infinity, ease: "linear" }}
+              />
+
+              {orbit.map((stage, index) => {
+                const Icon = stage.icon;
+                const selected = index === active;
+                return (
+                  <motion.button
+                    key={stage.id}
+                    type="button"
+                    onClick={() => setActive(index)}
+                    className={`absolute z-20 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border text-xs font-semibold shadow-warm transition ${
+                      selected
+                        ? "border-ember-300 bg-ember-500 text-white"
+                        : "border-white/10 bg-white/8 text-parchment-300 hover:bg-white/14"
+                    }`}
+                    style={{ left: `${stage.x}%`, top: `${stage.y}%` }}
+                    animate={{ y: selected ? [0, -6, 0] : [0, -3, 0] }}
+                    transition={{
+                      duration: selected ? 2.4 : 4,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                      delay: index * 0.15,
+                    }}
+                  >
+                    <Icon size={18} />
+                    <span className="mt-1">{stage.label}</span>
+                  </motion.button>
+                );
+              })}
+
+              <div className="absolute left-1/2 top-1/2 z-10 w-[21rem] -translate-x-1/2 -translate-y-1/2 rounded-[1.5rem] border border-white/10 bg-parchment-50 p-5 text-ink-500 shadow-warm-xl">
+                <motion.div
+                  key={current.id}
+                  initial={{ opacity: 0, scale: 0.94, y: 14 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ duration: 0.45, ease: smoothEase }}
+                >
+                  <div className="mb-5 flex items-center justify-between">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink-500 text-parchment-50">
+                      <ActiveIcon size={20} />
+                    </div>
+                    <span className="rounded-full bg-ember-100 px-3 py-1 text-xs font-medium text-ember-700">
+                      {current.artifact}
+                    </span>
+                  </div>
+                  <h2 className="font-serif text-3xl font-bold leading-tight">
+                    {current.title}
+                  </h2>
+                  <p className="mt-4 text-sm leading-relaxed text-ink-300">
+                    {current.body}
+                  </p>
+                  <div className="mt-5 rounded-2xl border border-parchment-300 bg-white/80 p-4">
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-ember-600">
+                      Live signal
+                    </p>
+                    <p className="font-serif text-lg leading-snug text-ink-500">
+                      {current.sample}
+                    </p>
+                  </div>
+                </motion.div>
+              </div>
+
+              <motion.div
+                aria-hidden
+                className="absolute bottom-8 left-8 right-8 z-20 h-2 overflow-hidden rounded-full bg-white/10"
+              >
+                <motion.div
+                  className="h-full rounded-full bg-ember-500"
+                  animate={{ width: `${((active + 1) / stages.length) * 100}%` }}
+                  transition={{ duration: 0.45, ease: smoothEase }}
+                />
+              </motion.div>
+            </div>
+          </div>
         </section>
 
-        <section className="mt-16 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {modules.map(({ icon: Icon, title, body }, index) => (
-            <motion.div
+        <section className="relative z-10 mt-10 grid gap-5 lg:grid-cols-3">
+          {[
+            {
+              icon: Brain,
+              title: "Memory before words",
+              body: "Folio stores the plan, batches, events, covers, and ownership so each creative step has context.",
+            },
+            {
+              icon: FileText,
+              title: "Approval before scale",
+              body: "Users can inspect the blueprint before the book starts writing, which keeps authors in the loop.",
+            },
+            {
+              icon: Library,
+              title: "A shelf, not an export pile",
+              body: "Finished work lands in a private library with covers, metadata, reader views, and project state.",
+            },
+          ].map(({ icon: Icon, title, body }) => (
+            <div
               key={title}
-              className="glass-card rounded-2xl p-6"
-              initial={{ opacity: 0, y: 18 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: index * 0.05, duration: 0.45 }}
+              className="rounded-3xl border border-parchment-300/70 bg-white/65 p-6 shadow-warm-sm"
             >
-              <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl border border-ember-200 bg-ember-100 text-ember-600">
-                <Icon size={19} />
-              </div>
-              <h2 className="font-serif text-xl font-semibold text-ink-500">{title}</h2>
+              <Icon size={20} className="mb-5 text-ember-600" />
+              <h3 className="font-serif text-2xl font-semibold text-ink-500">
+                {title}
+              </h3>
               <p className="mt-3 text-sm leading-relaxed text-ink-300">{body}</p>
-            </motion.div>
+            </div>
           ))}
         </section>
       </main>

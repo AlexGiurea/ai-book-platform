@@ -847,7 +847,9 @@ export default function LandingPage() {
         <BrandLogo markClassName="h-7 w-7" />
         <div className="hidden items-center gap-1 md:flex">
           {[
+            ["Product", "/product"],
             ["Pricing", "/pricing"],
+            ["About", "/about"],
           ].map(([label, href]) => (
             <Link
               key={href}
