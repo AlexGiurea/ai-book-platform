@@ -25,7 +25,7 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
         variant === "solid" ? "glass-nav" : "bg-transparent"
       )}
     >
-      <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div className="relative max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <Link
           href="/"
@@ -40,7 +40,7 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
         </Link>
 
         {/* Nav links */}
-        <div className="hidden md:flex items-center gap-1">
+        <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 md:flex">
           {navLinks.map(({ href, label }) => (
             <Link
               key={href}
