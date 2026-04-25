@@ -5,14 +5,9 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   BadgeDollarSign,
-  BookOpen,
-  Layers,
-  LayoutDashboard,
   LogIn,
   LogOut,
   Plus,
-  ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
@@ -46,12 +41,7 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
   }
 
   const navLinks = [
-    { href: "/product", label: "Product", icon: Sparkles },
-    { href: "/workflow", label: "Workflow", icon: Layers },
     { href: "/pricing", label: "Pricing", icon: BadgeDollarSign },
-    { href: "/security", label: "Security", icon: ShieldCheck },
-    { href: "/dashboard", label: "Library", icon: LayoutDashboard },
-    { href: "/reader", label: "Example Book", icon: BookOpen },
   ];
 
   return (

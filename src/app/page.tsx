@@ -200,15 +200,9 @@ function FeatherPenCTA() {
         />
       )}
 
-      {/* Text with left-to-right reveal */}
-      <motion.span
-        className="inline-block whitespace-nowrap"
-        initial={{ clipPath: "inset(0 100% 0 0)" }}
-        animate={{ clipPath: "inset(0 0% 0 0)" }}
-        transition={{ duration: WRITE_MS / 1000, ease: "linear" }}
-      >
-        Start creating — it&apos;s free
-      </motion.span>
+      <span className="inline-block whitespace-nowrap">
+        Start creating - it&apos;s free
+      </span>
     </Link>
   );
 }
@@ -853,11 +847,7 @@ export default function LandingPage() {
         <BrandLogo markClassName="h-7 w-7" />
         <div className="hidden items-center gap-1 md:flex">
           {[
-            ["Product", "/product"],
-            ["Workflow", "/workflow"],
             ["Pricing", "/pricing"],
-            ["Security", "/security"],
-            ["Library", "#library"],
           ].map(([label, href]) => (
             <Link
               key={href}
@@ -876,12 +866,6 @@ export default function LandingPage() {
             Sign in
           </Link>
           <Link
-            href="/reader"
-            className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
-          >
-            Example
-          </Link>
-          <Link
             href="/signup"
             className="flex items-center gap-1.5 px-4 py-2 bg-ink-500 hover:bg-ink-400 text-parchment-50 text-sm font-medium rounded-lg transition-all duration-150 shadow-warm-sm hover:shadow-warm"
           >
@@ -894,7 +878,7 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="relative z-10 max-w-5xl mx-auto px-8 pt-24 pb-20 text-center">
         <motion.div
-          initial="hidden"
+          initial={false}
           animate="visible"
           custom={0}
           variants={fadeUp}
@@ -907,7 +891,7 @@ export default function LandingPage() {
 
         <motion.h1
           className="font-serif text-5xl md:text-7xl font-bold text-ink-500 leading-[1.1] tracking-tight mb-8"
-          initial="hidden"
+          initial={false}
           animate="visible"
           custom={0.1}
           variants={fadeUp}
@@ -919,7 +903,7 @@ export default function LandingPage() {
 
         <motion.p
           className="text-lg md:text-xl text-ink-300 leading-relaxed max-w-2xl mx-auto mb-12"
-          initial="hidden"
+          initial={false}
           animate="visible"
           custom={0.2}
           variants={fadeUp}
@@ -931,7 +915,7 @@ export default function LandingPage() {
 
         <motion.div
           className="flex flex-col sm:flex-row items-center justify-center gap-4"
-          initial="hidden"
+          initial={false}
           animate="visible"
           custom={0.3}
           variants={fadeUp}
