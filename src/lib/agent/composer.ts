@@ -12,7 +12,9 @@ export class BookComposer {
    * `awaiting_approval` status so the user can review before writing begins.
    */
   async planBook(projectId: string): Promise<void> {
-    const model = getModelName();
+    const project = await store.getProject(projectId);
+    if (!project) throw new Error(`Project ${projectId} not found`);
+    const model = getModelName(project.plan);
     await store.appendEvent(projectId, { type: "project_start", model });
     await store.updateStatus(projectId, "planning");
 
@@ -33,7 +35,7 @@ export class BookComposer {
   async replan(projectId: string): Promise<void> {
     const project = await store.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
-    const model = getModelName();
+    const model = getModelName(project.plan);
     await store.updateStatus(projectId, "planning");
     try {
       await plannerAgent.generateBible(projectId);
@@ -51,9 +53,9 @@ export class BookComposer {
    * Each batch is retried once on failure before the project fails.
    */
   async writeBook(projectId: string): Promise<void> {
-    const model = getModelName();
     const project = await store.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
+    const model = getModelName(project.plan);
     if (!project.bible) throw new Error("Cannot write before a bible exists");
 
     await store.updateStatus(projectId, "writing");
@@ -114,9 +116,9 @@ export class BookComposer {
   }
 
   async writeNextBatch(projectId: string): Promise<"queued" | "complete"> {
-    const model = getModelName();
     const project = await store.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
+    const model = getModelName(project.plan);
     if (!project.bible) throw new Error("Cannot write before a bible exists");
 
     await store.updateStatus(projectId, "writing");

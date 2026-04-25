@@ -1,5 +1,35 @@
+create table if not exists users (
+  id text primary key,
+  email text not null,
+  email_normalized text not null unique,
+  name text,
+  plan text not null default 'pro',
+  password_hash text not null,
+  password_salt text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists users_created_at_idx on users (created_at desc);
+
+alter table users
+  add column if not exists plan text not null default 'pro';
+
+create table if not exists user_sessions (
+  id text primary key,
+  user_id text not null references users(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists user_sessions_user_idx on user_sessions (user_id);
+create index if not exists user_sessions_expires_idx on user_sessions (expires_at);
+
 create table if not exists projects (
   id text primary key,
+  user_id text references users(id) on delete cascade,
+  plan text not null default 'pro',
   input jsonb not null,
   status text not null,
   target_words integer not null,
@@ -18,6 +48,14 @@ create table if not exists projects (
 
 create index if not exists projects_created_at_idx on projects (created_at desc);
 create index if not exists projects_status_idx on projects (status);
+
+alter table projects
+  add column if not exists user_id text references users(id) on delete cascade;
+
+alter table projects
+  add column if not exists plan text not null default 'pro';
+
+create index if not exists projects_user_created_at_idx on projects (user_id, created_at desc);
 
 create table if not exists book_batches (
   project_id text not null references projects(id) on delete cascade,

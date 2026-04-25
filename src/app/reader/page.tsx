@@ -43,7 +43,6 @@ interface Page {
   isCover?: boolean;
   coverImageUrl?: string;
   bookTitle?: string;
-  synopsis?: string;
   genre?: string;
   tone?: string;
   coverFrom?: string;
@@ -154,7 +153,6 @@ function paginateBook(book: Book, wordsPerPage: number = WORDS_PER_PAGE): Page[]
       isCover: true,
       coverImageUrl: book.coverImageUrl,
       bookTitle: book.title,
-      synopsis: book.synopsis,
       genre: book.genre,
       tone: book.tone,
       ...palette,
@@ -300,7 +298,6 @@ function measureBookPages(
         isCover: true,
         coverImageUrl: book.coverImageUrl,
         bookTitle: book.title,
-        synopsis: book.synopsis,
         genre: book.genre,
         tone: book.tone,
         coverFrom: book.coverFrom,
@@ -1194,11 +1191,6 @@ function CoverPageContent({ page, immersive = false }: { page: Page; immersive?:
           {page.tone && (
             <p className={cn("mt-3 font-medium uppercase tracking-[0.18em] text-ember-200/85", immersive ? "text-[11px]" : "text-[9px]")}>
               {page.tone}
-            </p>
-          )}
-          {page.synopsis && (
-            <p className={cn("mt-4 max-w-[28ch] leading-relaxed text-parchment-100/80", immersive ? "text-sm" : "text-[10px]")}>
-              {page.synopsis}
             </p>
           )}
         </div>

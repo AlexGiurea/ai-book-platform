@@ -1,17 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
   ArrowRight,
+  BadgeDollarSign,
   BookOpen,
+  CheckCircle2,
+  Database,
   Feather,
   ImageIcon,
+  KeyRound,
   Layers,
+  PenTool,
   Sparkles,
   Wand2,
 } from "lucide-react";
+import BrandLogo from "@/components/BrandLogo";
+import { PLAN_DEFINITIONS, PLAN_ORDER } from "@/lib/plans";
+import { dashboardBooks } from "@/lib/sampleData";
 
 const smoothEase = [0.16, 1, 0.3, 1] as const;
 
@@ -46,6 +55,17 @@ const features = [
     body: "Read your book inside an elegant digital reader with soft typography and inline art. No PDFs needed.",
   },
 ];
+
+const capabilityCards = [
+  { icon: Wand2, title: "Prompt", label: "Idea intake", body: "Premise, files, notes, characters" },
+  { icon: Layers, title: "Plan", label: "Story bible", body: "Chapters, canon, voice, themes" },
+  { icon: PenTool, title: "Draft", label: "Batch writing", body: "Tracked jobs with progress events" },
+  { icon: ImageIcon, title: "Design", label: "Cover system", body: "Visual direction and cover retries" },
+  { icon: Database, title: "Store", label: "Neon library", body: "Private projects and book history" },
+  { icon: KeyRound, title: "Protect", label: "Auth scoped", body: "Sessions and account ownership" },
+];
+
+const pricingPlans = PLAN_ORDER.map((id) => PLAN_DEFINITIONS[id]);
 
 const manuscripts = [
   {
@@ -103,7 +123,7 @@ function FeatherPenCTA() {
 
   return (
     <Link
-      href="/create"
+      href="/signup"
       className="group relative flex items-center justify-center px-7 py-3.5 bg-ember-500 hover:bg-ember-600 text-white text-base font-medium rounded-xl transition-all duration-200 shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5 overflow-visible"
     >
       {/* Feather pen */}
@@ -448,6 +468,376 @@ function LivingManuscript() {
   );
 }
 
+function CapabilityRibbon() {
+  return (
+    <section id="capabilities" className="relative z-10 mx-auto max-w-6xl px-8 pb-32">
+      <motion.div
+        className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between"
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.6, ease: smoothEase }}
+      >
+        <div>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-ember-600">
+            Capability map
+          </p>
+          <h2 className="font-serif text-3xl font-bold text-ink-500 md:text-4xl">
+            Everything moves through one calm studio
+          </h2>
+        </div>
+        <p className="max-w-md text-sm leading-relaxed text-ink-300">
+          Capture source material, approve the structure, generate chapters,
+          design covers, and keep the result saved to your account.
+        </p>
+      </motion.div>
+
+      <div className="glass-card overflow-hidden rounded-3xl p-5">
+        <div className="relative rounded-2xl border border-parchment-300/70 bg-parchment-50/70 p-5">
+          <motion.div
+            aria-hidden
+            className="absolute left-8 right-8 top-1/2 hidden h-px bg-gradient-to-r from-ember-200 via-sage-500/50 to-dust-200 md:block"
+            initial={{ scaleX: 0, opacity: 0 }}
+            whileInView={{ scaleX: 1, opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1.2, ease: smoothEase }}
+            style={{ transformOrigin: "left" }}
+          />
+          <div className="relative grid gap-4 md:grid-cols-6">
+            {capabilityCards.map((card, index) => (
+              <motion.div
+                key={card.title}
+                className="rounded-2xl border border-parchment-300/70 bg-white/80 p-4 shadow-warm-sm"
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.55, ease: smoothEase, delay: index * 0.08 }}
+              >
+                <motion.div
+                  className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-ink-500 text-parchment-50"
+                  animate={{ y: [0, -4, 0] }}
+                  transition={{
+                    duration: 3,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    delay: index * 0.18,
+                  }}
+                >
+                  <card.icon size={17} />
+                </motion.div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ember-600">
+                  {card.label}
+                </p>
+                <h3 className="mt-2 font-serif text-lg font-semibold text-ink-500">
+                  {card.title}
+                </h3>
+                <p className="mt-2 text-xs leading-relaxed text-ink-300">
+                  {card.body}
+                </p>
+              </motion.div>
+            ))}
+          </div>
+          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-parchment-300/60 pt-5 text-xs text-ink-300">
+            {["Private library", "Persistent jobs", "Cover retries", "Reader mode", "Export-ready"].map((item) => (
+              <span
+                key={item}
+                className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 shadow-warm-sm"
+              >
+                <CheckCircle2 size={12} className="text-sage-500" />
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MiniLibraryCarousel() {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeBook = dashboardBooks[activeIndex];
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setActiveIndex((index) => (index + 1) % dashboardBooks.length);
+    }, 5200);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <section id="library" className="relative z-10 mx-auto max-w-6xl px-8 pb-32">
+      <motion.div
+        className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between"
+        initial={{ opacity: 0, y: 20 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.6, ease: smoothEase }}
+      >
+        <div>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-ember-600">
+            Mini library
+          </p>
+          <h2 className="font-serif text-3xl font-bold text-ink-500 md:text-4xl">
+            Browse example books before signing up
+          </h2>
+        </div>
+        <p className="max-w-md text-sm leading-relaxed text-ink-300">
+          A visitor-facing preview of the same sample shelf used in the library.
+          Explore covers, genres, page scope, and story premises before creating
+          an account.
+        </p>
+      </motion.div>
+
+      <div className="glass-card overflow-hidden rounded-3xl p-5">
+        <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <div className="relative min-h-[420px] overflow-hidden rounded-2xl border border-parchment-300/70 bg-ink-500 p-6 text-parchment-50">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeBook.id}
+                initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -18, scale: 0.98 }}
+                transition={{ duration: 0.45, ease: smoothEase }}
+                className="relative z-10 flex h-full flex-col"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-ember-300">
+                    Featured read
+                  </span>
+                  <span className="text-xs text-parchment-400">
+                    {activeIndex + 1} / {dashboardBooks.length}
+                  </span>
+                </div>
+
+                <div className="mt-8 grid flex-1 gap-6 sm:grid-cols-[170px_1fr] sm:items-center">
+                  <div className="relative mx-auto aspect-[2/3] w-40 overflow-hidden rounded-xl shadow-warm-xl sm:w-full">
+                    {activeBook.coverImageUrl ? (
+                      <Image
+                        src={activeBook.coverImageUrl}
+                        alt={`${activeBook.title} cover`}
+                        fill
+                        sizes="170px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="h-full w-full"
+                        style={{
+                          background: `linear-gradient(160deg, ${activeBook.coverFrom}, ${activeBook.coverVia}, ${activeBook.coverTo})`,
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-ember-300">
+                      {activeBook.genre}
+                    </p>
+                    <h3 className="font-serif text-4xl font-bold leading-tight text-parchment-50">
+                      {activeBook.title}
+                    </h3>
+                    <p className="mt-4 max-w-lg text-sm leading-relaxed text-parchment-300">
+                      {activeBook.synopsis}
+                    </p>
+                    <div className="mt-6 flex flex-wrap gap-2 text-xs text-parchment-300">
+                      <span className="rounded-full bg-white/8 px-3 py-1.5">
+                        {activeBook.wordCount.toLocaleString()} words
+                      </span>
+                      <span className="rounded-full bg-white/8 px-3 py-1.5">
+                        {activeBook.chapterCount} chapters
+                      </span>
+                      <span className="rounded-full bg-white/8 px-3 py-1.5">
+                        {activeBook.tone}
+                      </span>
+                    </div>
+                    <Link
+                      href="/reader"
+                      className="mt-7 inline-flex items-center gap-2 rounded-xl bg-ember-500 px-5 py-3 text-sm font-medium text-white shadow-ember transition hover:bg-ember-600"
+                    >
+                      Open sample reader
+                      <ArrowRight size={14} />
+                    </Link>
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
+            <motion.div
+              aria-hidden
+              className="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-ember-500/20 blur-[80px]"
+              animate={{ scale: [1, 1.12, 1], opacity: [0.45, 0.75, 0.45] }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+            />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {dashboardBooks.map((book, index) => {
+              const active = index === activeIndex;
+              return (
+                <motion.button
+                  key={book.id}
+                  type="button"
+                  onClick={() => setActiveIndex(index)}
+                  className={`group flex min-h-[126px] cursor-pointer gap-4 rounded-2xl border p-3 text-left transition-all ${
+                    active
+                      ? "border-ember-300 bg-ember-100/45 shadow-warm"
+                      : "border-parchment-300/70 bg-white/72 hover:border-ember-200 hover:bg-white"
+                  }`}
+                  initial={{ opacity: 1, y: 0 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.04, duration: 0.3 }}
+                  whileHover={{ y: -2 }}
+                >
+                  <div className="relative aspect-[2/3] w-16 shrink-0 overflow-hidden rounded-lg shadow-warm-sm">
+                    {book.coverImageUrl ? (
+                      <Image
+                        src={book.coverImageUrl}
+                        alt=""
+                        fill
+                        sizes="64px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="h-full w-full"
+                        style={{
+                          background: `linear-gradient(160deg, ${book.coverFrom}, ${book.coverVia}, ${book.coverTo})`,
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="truncate font-serif text-base font-semibold text-ink-500">
+                        {book.title}
+                      </p>
+                      <motion.span
+                        className={`h-2 w-2 shrink-0 rounded-full ${
+                          active ? "bg-ember-500" : "bg-parchment-300"
+                        }`}
+                        animate={active ? { scale: [1, 1.35, 1] } : { scale: 1 }}
+                        transition={{ duration: 1.4, repeat: active ? Infinity : 0 }}
+                      />
+                    </div>
+                    <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-ember-600">
+                      {book.genre}
+                    </p>
+                    <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-ink-300">
+                      {book.synopsis}
+                    </p>
+                  </div>
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PricingPreview() {
+  return (
+    <section id="pricing" className="relative z-10 mx-auto max-w-6xl px-8 pb-32">
+      <motion.div
+        className="mb-10 text-center"
+        initial={false}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.6, ease: smoothEase }}
+      >
+        <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-ember-200 bg-ember-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+          <BadgeDollarSign size={12} />
+          Pricing
+        </p>
+        <h2 className="font-serif text-3xl font-bold text-ink-500 md:text-4xl">
+          Start free, move to Pro when the book gets serious
+        </h2>
+        <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-ink-300">
+          Free is wired for GPT-5.4 mini. Pro is wired for GPT-5.5 and is the
+          current beta default while payments are off.
+        </p>
+      </motion.div>
+
+      <div className="grid gap-5 md:grid-cols-2">
+        {pricingPlans.map((plan, index) => (
+          <motion.div
+            key={plan.name}
+            className={
+              plan.featured
+                ? "relative rounded-3xl bg-ink-500 p-6 text-parchment-50 shadow-warm-xl"
+                : "glass-card rounded-3xl p-6"
+            }
+            initial={false}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: index * 0.08, duration: 0.5 }}
+          >
+            {plan.featured && (
+              <span className="absolute right-5 top-5 rounded-full bg-ember-500 px-3 py-1 text-xs font-medium text-white">
+                Popular
+              </span>
+            )}
+            <h3 className="font-serif text-2xl font-bold">{plan.name}</h3>
+            <div className="mt-5 flex items-end gap-2">
+              <span className="font-serif text-4xl font-bold">{plan.price}</span>
+              <span className={plan.featured ? "mb-1 text-parchment-400" : "mb-1 text-ink-300"}>
+                {plan.cadence}
+              </span>
+            </div>
+            <p className={plan.featured ? "mt-4 text-sm leading-relaxed text-parchment-300" : "mt-4 text-sm leading-relaxed text-ink-300"}>
+              {plan.summary}
+            </p>
+            <div
+              className={
+                plan.featured
+                  ? "mt-5 rounded-2xl border border-white/10 bg-white/8 p-4"
+                  : "mt-5 rounded-2xl border border-parchment-300/70 bg-white/65 p-4"
+              }
+            >
+              <p
+                className={
+                  plan.featured
+                    ? "text-[10px] font-semibold uppercase tracking-[0.18em] text-ember-300"
+                    : "text-[10px] font-semibold uppercase tracking-[0.18em] text-ember-600"
+                }
+              >
+                Generation model
+              </p>
+              <p className="mt-1 font-serif text-xl font-semibold">
+                {plan.modelLabel}
+              </p>
+            </div>
+            <div className="mt-5 space-y-2">
+              {plan.features.slice(0, 4).map((feature) => (
+                <div key={feature} className="flex items-center gap-2 text-sm">
+                  <CheckCircle2
+                    size={15}
+                    className={plan.featured ? "text-ember-300" : "text-sage-500"}
+                  />
+                  <span className={plan.featured ? "text-parchment-200" : "text-ink-300"}>
+                    {feature}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="mt-7 text-center">
+        <Link
+          href="/pricing"
+          className="inline-flex items-center gap-2 rounded-xl border border-parchment-300 bg-white/70 px-5 py-3 text-sm font-medium text-ink-400 shadow-warm-sm transition hover:bg-white"
+        >
+          View full pricing
+          <ArrowRight size={14} />
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-parchment-100 overflow-hidden">
@@ -460,32 +850,42 @@ export default function LandingPage() {
 
       {/* Nav */}
       <nav className="relative z-10 flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-ember-500 flex items-center justify-center shadow-ember">
-            <Sparkles size={14} className="text-white" />
-          </div>
-          <span className="font-serif text-lg font-semibold text-ink-500 tracking-tight">
-            Folio
-          </span>
+        <BrandLogo markClassName="h-7 w-7" />
+        <div className="hidden items-center gap-1 md:flex">
+          {[
+            ["Product", "/product"],
+            ["Workflow", "/workflow"],
+            ["Pricing", "/pricing"],
+            ["Security", "/security"],
+            ["Library", "#library"],
+          ].map(([label, href]) => (
+            <Link
+              key={href}
+              href={href}
+              className="rounded-lg px-3 py-2 text-sm font-medium text-ink-300 transition-colors hover:bg-parchment-200/60 hover:text-ink-500"
+            >
+              {label}
+            </Link>
+          ))}
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/signin"
+            className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
+          >
+            Sign in
+          </Link>
           <Link
             href="/reader"
             className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
           >
-            See an example
+            Example
           </Link>
           <Link
-            href="/dashboard"
-            className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
-          >
-            Library
-          </Link>
-          <Link
-            href="/create"
+            href="/signup"
             className="flex items-center gap-1.5 px-4 py-2 bg-ink-500 hover:bg-ink-400 text-parchment-50 text-sm font-medium rounded-lg transition-all duration-150 shadow-warm-sm hover:shadow-warm"
           >
-            Start creating
+            Start free
             <ArrowRight size={13} />
           </Link>
         </div>
@@ -552,6 +952,8 @@ export default function LandingPage() {
         <LivingManuscript />
       </section>
 
+      <MiniLibraryCarousel />
+
       {/* Features */}
       <section className="relative z-10 max-w-6xl mx-auto px-8 pb-32">
         <motion.div
@@ -596,6 +998,10 @@ export default function LandingPage() {
         </div>
       </section>
 
+      <CapabilityRibbon />
+
+      <PricingPreview />
+
       {/* CTA section */}
       <section className="relative z-10 max-w-3xl mx-auto px-8 pb-32 text-center">
         <motion.div
@@ -615,7 +1021,7 @@ export default function LandingPage() {
             minutes.
           </p>
           <Link
-            href="/create"
+            href="/signup"
             className="inline-flex items-center gap-2 px-8 py-4 bg-ember-500 hover:bg-ember-600 text-white text-base font-medium rounded-xl transition-all duration-200 shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5"
           >
             <Feather size={16} />
@@ -628,12 +1034,10 @@ export default function LandingPage() {
       <footer className="relative z-10 border-t border-parchment-300/50 py-8 px-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-md bg-ember-500 flex items-center justify-center">
-              <Sparkles size={10} className="text-white" />
-            </div>
-            <span className="font-serif text-sm font-semibold text-ink-300">
-              Folio
-            </span>
+            <BrandLogo
+              markClassName="h-5 w-5"
+              textClassName="text-sm text-ink-300"
+            />
           </div>
           <p className="text-xs text-ink-200">
             © 2026 Folio · An AI book-writing platform
