@@ -474,7 +474,11 @@ export default function DashboardPage() {
                       Back to library
                     </button>
                     <Link
-                      href={exampleBookIds.has(previewBook.id) ? "/reader" : `/reader?id=${previewBook.id}`}
+                      href={
+                        exampleBookIds.has(previewBook.id)
+                          ? `/reader?sample=${encodeURIComponent(previewBook.id)}&library=1`
+                          : `/reader?id=${previewBook.id}`
+                      }
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-ink-500 px-5 py-2.5 text-sm font-medium text-parchment-50 shadow-warm transition-all hover:bg-ink-400"
                     >
                       <BookOpen size={14} />
