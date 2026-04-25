@@ -44,9 +44,9 @@ export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
       "A focused way to try Folio, draft shorter books, and keep a private library before upgrading.",
     bestFor: "Exploring ideas, sample projects, and early outlines",
     cta: "Start free",
-    href: "/create",
+    href: "/signup",
     features: [
-      "Private project library",
+      "Private account library",
       "Idea, upload, and canvas intake",
       "Book blueprint review before writing",
       "Beautiful in-app reader",
@@ -73,7 +73,7 @@ export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
       "The full creative engine for serious manuscripts, richer planning, longer writing runs, and publishing polish.",
     bestFor: "Authors building complete books and repeatable publishing workflows",
     cta: "Use Pro",
-    href: "/create",
+    href: "/signup",
     featured: true,
     features: [
       "Everything in Free",

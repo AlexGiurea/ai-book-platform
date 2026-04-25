@@ -28,7 +28,7 @@ export class WriterAgent {
 
     const bible: StoryBible = project.bible;
     const client = getOpenAIClient();
-    const model = getModelName();
+    const model = getModelName(project.plan);
 
     const allBatches = project.batches;
     const recentBatches = allBatches.slice(-RECENT_PROSE_COUNT);

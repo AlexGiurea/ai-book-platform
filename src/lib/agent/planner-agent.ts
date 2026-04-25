@@ -16,7 +16,7 @@ export class PlannerAgent {
     if (!project) throw new Error(`Project ${projectId} not found`);
 
     const client = getOpenAIClient();
-    const model = getModelName();
+    const model = getModelName(project.plan);
     const targetWords = project.targetWords;
     const totalBatches = Math.max(1, Math.round(targetWords / WORDS_PER_BATCH));
     const targetChapters = Math.max(
