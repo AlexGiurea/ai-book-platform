@@ -2315,98 +2315,106 @@ function ReaderInner() {
               onClick={() => setShowUpgradeModal(false)}
             />
             <motion.div
-              className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md px-6"
+              className="fixed left-1/2 top-1/2 z-50 w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 px-4"
               initial={{ opacity: 0, scale: 0.92, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 10 }}
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             >
-              <div className="glass-card rounded-3xl p-8 relative">
+              <div className="glass-card relative rounded-[2rem] p-5 sm:p-6">
                 <button
                   onClick={() => {
                     setShowUpgradeModal(false);
                     setExportError(null);
                     setExportMessage(null);
                   }}
-                  className="absolute top-4 right-4 text-ink-200 hover:text-ink-400 p-2 rounded-lg hover:bg-parchment-200/60"
+                  className="absolute right-4 top-4 rounded-lg p-2 text-ink-200 hover:bg-parchment-200/60 hover:text-ink-400"
                 >
                   <X size={16} />
                 </button>
-                <div className="w-14 h-14 rounded-2xl bg-ember-100 border border-ember-200 flex items-center justify-center mb-6">
-                  <Download size={22} className="text-ember-600" />
-                </div>
-                <h2 className="font-serif text-2xl font-bold text-ink-500 mb-3">Export your book</h2>
-                <p className="text-ink-300 text-sm leading-relaxed mb-7">
-                  Download your manuscript as PDF or EPUB, or create a Kindle-ready email with the selected file attached.
-                </p>
-
-                <div className="mb-6 rounded-2xl border border-parchment-300/70 bg-white/70 p-4">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-                    Download
-                  </p>
-                  <div className="mb-4 grid grid-cols-2 gap-2">
-                    {(["pdf", "epub"] as ExportFormat[]).map((format) => (
-                      <button
-                        key={format}
-                        type="button"
-                        onClick={() => setExportFormat(format)}
-                        className={cn(
-                          "rounded-xl border px-3 py-2 text-sm font-medium uppercase transition",
-                          exportFormat === format
-                            ? "border-ember-300 bg-ember-100 text-ember-700"
-                            : "border-parchment-300 bg-white text-ink-300 hover:text-ink-500"
-                        )}
-                      >
-                        {format}
-                      </button>
-                    ))}
+                <div className="mb-5 flex items-start gap-4 pr-9">
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl border border-ember-200 bg-ember-100">
+                    <Download size={20} className="text-ember-600" />
                   </div>
-                  <button
-                    onClick={() => runExport("download")}
-                    disabled={exportBusy}
-                    className="w-full py-3 bg-ink-500 hover:bg-ink-400 disabled:cursor-not-allowed disabled:opacity-60 text-parchment-50 font-medium rounded-xl transition-all text-sm shadow-warm"
-                  >
-                    {exportBusy ? "Preparing export..." : `Download ${exportFormat.toUpperCase()}`}
-                  </button>
+                  <div>
+                    <h2 className="font-serif text-2xl font-bold text-ink-500">Export your book</h2>
+                    <p className="mt-1 max-w-xl text-sm leading-relaxed text-ink-300">
+                      Create a manuscript-style PDF, an EPUB, or a Kindle email package for the book currently open in the reader.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="rounded-2xl border border-parchment-300/70 bg-parchment-50/80 p-4">
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
-                    Send to Kindle workflow
-                  </p>
-                  <input
-                    value={kindleEmail}
-                    onChange={(event) => setKindleEmail(event.target.value)}
-                    placeholder="your-name@kindle.com"
-                    className="mb-3 w-full rounded-xl border border-parchment-300 bg-white px-3 py-2.5 text-sm text-ink-500 outline-none transition focus:border-ember-300"
-                  />
-                  <div className="mb-4 grid grid-cols-2 gap-2">
-                    {(["epub", "pdf"] as ExportFormat[]).map((format) => (
-                      <button
-                        key={format}
-                        type="button"
-                        onClick={() => setKindleFormat(format)}
-                        className={cn(
-                          "rounded-xl border px-3 py-2 text-sm font-medium uppercase transition",
-                          kindleFormat === format
-                            ? "border-ember-300 bg-ember-100 text-ember-700"
-                            : "border-parchment-300 bg-white text-ink-300 hover:text-ink-500"
-                        )}
-                      >
-                        {format}
-                      </button>
-                    ))}
+                <div className="grid gap-4 md:grid-cols-[1.05fr_0.95fr]">
+                  <div className="rounded-3xl border border-parchment-300/70 bg-white/75 p-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+                      Direct download
+                    </p>
+                    <div className="mb-4 grid grid-cols-2 gap-2">
+                      {(["pdf", "epub"] as ExportFormat[]).map((format) => (
+                        <button
+                          key={format}
+                          type="button"
+                          onClick={() => setExportFormat(format)}
+                          className={cn(
+                            "rounded-xl border px-3 py-2 text-sm font-medium uppercase transition",
+                            exportFormat === format
+                              ? "border-ember-300 bg-ember-100 text-ember-700"
+                              : "border-parchment-300 bg-white text-ink-300 hover:text-ink-500"
+                          )}
+                        >
+                          {format}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => runExport("download")}
+                      disabled={exportBusy}
+                      className="w-full rounded-xl bg-ink-500 py-3 text-sm font-medium text-parchment-50 shadow-warm transition-all hover:bg-ink-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {exportBusy ? "Preparing..." : `Download ${exportFormat.toUpperCase()}`}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => runExport("kindle")}
-                    disabled={exportBusy}
-                    className="w-full py-3 bg-ember-500 hover:bg-ember-600 disabled:cursor-not-allowed disabled:opacity-60 text-white font-medium rounded-xl transition-all text-sm shadow-ember"
-                  >
-                    {exportBusy ? "Preparing Kindle email..." : "Download Kindle email"}
-                  </button>
-                  <p className="mt-3 text-xs leading-relaxed text-ink-300">
-                    This downloads a ready-to-send .eml file with the export attached. Open it in your email app and send it to your Kindle address.
-                  </p>
+
+                  <div className="rounded-3xl border border-parchment-300/70 bg-parchment-50/85 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+                        Kindle
+                      </p>
+                      <div className="flex rounded-xl border border-parchment-300 bg-white p-1">
+                        {(["epub", "pdf"] as ExportFormat[]).map((format) => (
+                          <button
+                            key={format}
+                            type="button"
+                            onClick={() => setKindleFormat(format)}
+                            className={cn(
+                              "rounded-lg px-3 py-1.5 text-xs font-medium uppercase transition",
+                              kindleFormat === format
+                                ? "bg-ember-100 text-ember-700"
+                                : "text-ink-300 hover:text-ink-500"
+                            )}
+                          >
+                            {format}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <input
+                      value={kindleEmail}
+                      onChange={(event) => setKindleEmail(event.target.value)}
+                      placeholder="your-name@kindle.com"
+                      className="mb-3 w-full rounded-xl border border-parchment-300 bg-white px-3 py-2.5 text-sm text-ink-500 outline-none transition focus:border-ember-300"
+                    />
+                    <button
+                      onClick={() => runExport("kindle")}
+                      disabled={exportBusy}
+                      className="w-full rounded-xl bg-ember-500 py-3 text-sm font-medium text-white shadow-ember transition-all hover:bg-ember-600 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {exportBusy ? "Preparing..." : "Download email file"}
+                    </button>
+                    <p className="mt-2 text-[11px] leading-relaxed text-ink-300">
+                      Downloads a ready-to-send .eml with the selected file attached.
+                    </p>
+                  </div>
                 </div>
 
                 {(exportError || exportMessage) && (

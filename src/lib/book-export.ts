@@ -96,55 +96,142 @@ function projectToExportBook(project: BookProject): ExportBook {
   };
 }
 
-function makePdfPage(lines: string[]): string {
-  const escaped = lines.map((line) => `(${escapePdfText(line)}) Tj`).join("\n0 -17 Td\n");
-  return `BT
-/F1 11 Tf
-72 742 Td
-14 TL
-${escaped}
-ET`;
+type PdfTextOp = {
+  text: string;
+  x: number;
+  y: number;
+  size: number;
+};
+
+type PdfPage = {
+  ops: PdfTextOp[];
+};
+
+const PDF_PAGE_WIDTH = 419.52;
+const PDF_PAGE_HEIGHT = 595.32;
+const PDF_MARGIN_LEFT = 50.4;
+const PDF_BODY_TOP = 533.7;
+const PDF_BODY_BOTTOM = 78.3;
+const PDF_LINE_HEIGHT = 20.7;
+const PDF_FIRST_LINE_INDENT = 36;
+
+function centeredText(text: string, size: number): number {
+  // Times-Roman is proportional; this approximation is intentionally tuned for
+  // title/chapter pages rather than exact typesetting metrics.
+  return Math.max(36, (PDF_PAGE_WIDTH - text.length * size * 0.46) / 2);
+}
+
+function pdfTextOp({ text, x, y, size }: PdfTextOp): string {
+  return `BT\n/F1 ${size} Tf\n${x.toFixed(1)} ${y.toFixed(1)} Td\n(${escapePdfText(text)}) Tj\nET`;
+}
+
+function pageNumberOp(index: number): PdfTextOp {
+  return { text: String(index), x: PDF_MARGIN_LEFT, y: 556.8, size: 10 };
+}
+
+function titlePage(book: ExportBook, pageIndex: number): PdfPage {
+  return {
+    ops: [
+      pageNumberOp(pageIndex),
+      {
+        text: book.title,
+        x: centeredText(book.title, 36),
+        y: 407.8,
+        size: 36,
+      },
+      {
+        text: book.author,
+        x: centeredText(book.author, 28),
+        y: 353.1,
+        size: 28,
+      },
+    ],
+  };
+}
+
+function blankPage(pageIndex: number): PdfPage {
+  return { ops: [pageNumberOp(pageIndex)] };
+}
+
+function chapterTitlePage(chapter: ExportBook["chapters"][number], pageIndex: number): PdfPage {
+  const title = chapter.title;
+  return {
+    ops: [
+      pageNumberOp(pageIndex),
+      {
+        text: title,
+        x: centeredText(title, 22),
+        y: 313.9,
+        size: 22,
+      },
+    ],
+  };
+}
+
+function bodyPages(chapter: ExportBook["chapters"][number], firstPageIndex: number): PdfPage[] {
+  const pages: PdfPage[] = [];
+  let ops: PdfTextOp[] = [pageNumberOp(firstPageIndex)];
+  let pageIndex = firstPageIndex;
+  let y = PDF_BODY_TOP;
+
+  const startNewPage = () => {
+    pages.push({ ops });
+    pageIndex += 1;
+    ops = [pageNumberOp(pageIndex)];
+    y = PDF_BODY_TOP;
+  };
+
+  const paragraphs = chapter.content
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  for (const paragraph of paragraphs) {
+    const firstLineWidth = 52;
+    const continuationWidth = 60;
+    const firstPass = wrapText(paragraph, firstLineWidth);
+    const lines =
+      firstPass.length <= 1
+        ? firstPass
+        : [
+            firstPass[0],
+            ...wrapText(firstPass.slice(1).join(" "), continuationWidth),
+          ];
+
+    lines.forEach((line, lineIndex) => {
+      if (y < PDF_BODY_BOTTOM) startNewPage();
+      ops.push({
+        text: line,
+        x: lineIndex === 0 ? PDF_MARGIN_LEFT + PDF_FIRST_LINE_INDENT : PDF_MARGIN_LEFT,
+        y,
+        size: 12,
+      });
+      y -= PDF_LINE_HEIGHT;
+    });
+  }
+
+  pages.push({ ops });
+  return pages;
 }
 
 function buildPdf(book: ExportBook): Buffer {
-  const allLines: string[] = [
-    book.title,
-    `by ${book.author}`,
-    "",
-    book.synopsis,
-    "",
-    ...book.chapters.flatMap((chapter) => [
-      `Chapter ${chapter.number}: ${chapter.title}`,
-      "",
-      ...chapter.content.split(/\n{2,}/).flatMap((paragraph) => [
-        ...wrapText(paragraph, 88),
-        "",
-      ]),
-    ]),
-  ];
-
-  const pages: string[][] = [];
-  let current: string[] = [];
-  for (const line of allLines) {
-    if (current.length >= 42) {
-      pages.push(current);
-      current = [];
-    }
-    current.push(line);
+  const pages: PdfPage[] = [titlePage(book, 0), blankPage(1)];
+  for (const chapter of book.chapters) {
+    pages.push(chapterTitlePage(chapter, pages.length));
+    pages.push(...bodyPages(chapter, pages.length));
   }
-  if (current.length) pages.push(current);
 
   const objects: string[] = [
     "<< /Type /Catalog /Pages 2 0 R >>",
     `<< /Type /Pages /Kids [${pages.map((_, index) => `${3 + index * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`,
   ];
 
-  pages.forEach((pageLines, index) => {
+  pages.forEach((page, index) => {
     const pageObjectNumber = 3 + index * 2;
     const contentObjectNumber = pageObjectNumber + 1;
-    const content = makePdfPage(pageLines);
+    const content = page.ops.map(pdfTextOp).join("\n");
     objects.push(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >> >> >> /Contents ${contentObjectNumber} 0 R >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PDF_PAGE_WIDTH} ${PDF_PAGE_HEIGHT}] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >> >> >> /Contents ${contentObjectNumber} 0 R >>`,
       `<< /Length ${Buffer.byteLength(content, "utf8")} >>\nstream\n${content}\nendstream`
     );
   });
