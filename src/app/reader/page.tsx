@@ -1425,6 +1425,8 @@ function ReaderToolbar({
   onExport,
   onRegenerateCover,
   coverBusy,
+  backHref,
+  backLabel,
 }: {
   book: Book;
   mode: ReaderMode;
@@ -1444,6 +1446,8 @@ function ReaderToolbar({
   onExport: () => void;
   onRegenerateCover?: () => void;
   coverBusy?: boolean;
+  backHref: string;
+  backLabel: string;
 }) {
   const isBook = mode === "book";
   const tapClass = TAP_CLASS;
@@ -1451,13 +1455,13 @@ function ReaderToolbar({
   return (
     <header className={cn("relative z-40 flex h-[76px] flex-shrink-0 items-center border-b px-3 backdrop-blur-xl sm:px-5", isBook ? "border-white/10 bg-ink-500/92 text-parchment-100" : "border-parchment-200/80 bg-parchment-50/88 text-ink-500")}>
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <Link href="/dashboard" className={cn("hidden rounded-2xl border px-4 py-2.5 text-sm font-medium sm:inline-flex", tapClass, isBook ? "border-white/10 bg-white/5 text-parchment-200 hover:bg-white/10" : "border-parchment-300/70 bg-parchment-100/70 text-ink-400 hover:bg-parchment-200/70")}>
-          Library
+        <Link href={backHref} className={cn("hidden rounded-2xl border px-4 py-2.5 text-sm font-medium sm:inline-flex", tapClass, isBook ? "border-white/10 bg-white/5 text-parchment-200 hover:bg-white/10" : "border-parchment-300/70 bg-parchment-100/70 text-ink-400 hover:bg-parchment-200/70")}>
+          {backLabel}
         </Link>
 
-        <button onClick={() => window.history.back()} className={cn("inline-flex h-11 w-11 items-center justify-center rounded-2xl", tapClass, isBook ? "text-parchment-300 hover:bg-white/10" : "text-ink-300 hover:bg-parchment-200/70")} aria-label="Go back">
+        <Link href={backHref} className={cn("inline-flex h-11 w-11 items-center justify-center rounded-2xl", tapClass, isBook ? "text-parchment-300 hover:bg-white/10" : "text-ink-300 hover:bg-parchment-200/70")} aria-label={`Back to ${backLabel.toLowerCase()}`}>
           <ChevronLeft size={22} />
-        </button>
+        </Link>
 
         <button onClick={() => onNavigate(0)} className={cn("inline-flex h-11 w-11 items-center justify-center rounded-2xl", tapClass, isBook ? "text-parchment-300 hover:bg-white/10" : "text-ink-300 hover:bg-parchment-200/70")} aria-label="Restart book">
           <RotateCcw size={19} />
@@ -1949,6 +1953,8 @@ function ReaderInner() {
   const [loading, setLoading] = useState(!!projectId);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
+  const backHref = projectId ? "/dashboard" : "/";
+  const backLabel = projectId ? "Library" : "Home";
 
   useEffect(() => {
     if (!projectId) return;
@@ -1975,6 +1981,8 @@ function ReaderInner() {
         throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
       }
 
+      await fetch("/api/jobs/run", { method: "POST" }).catch(() => undefined);
+
       let attempts = 0;
       const poll = async (): Promise<void> => {
         attempts += 1;
@@ -1982,7 +1990,13 @@ function ReaderInner() {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data: ApiProject = await r.json();
         setLoadedBook(projectToBook(data));
-        if (data.coverStatus === "generating" && attempts < 120) {
+        if (data.coverStatus === "failed") {
+          throw new Error(data.coverError ?? "Cover generation failed");
+        }
+        if ((data.coverStatus === "pending" || data.coverStatus === "generating") && attempts < 120) {
+          if (data.coverStatus === "pending" || attempts % 4 === 0) {
+            fetch("/api/jobs/run", { method: "POST" }).catch(() => undefined);
+          }
           await new Promise((resolve) => setTimeout(resolve, 1500));
           return poll();
         }
@@ -2128,6 +2142,8 @@ function ReaderInner() {
             onExport={() => setShowUpgradeModal(true)}
             onRegenerateCover={projectId ? regenerateCover : undefined}
             coverBusy={coverBusy}
+            backHref={backHref}
+            backLabel={backLabel}
           />
         )}
 
