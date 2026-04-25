@@ -2112,17 +2112,28 @@ function ReaderInner() {
   const runExport = useCallback(async (mode: "download" | "kindle") => {
     setExportError(null);
     setExportMessage(null);
-    if (!projectId) {
-      setExportError("Open a saved book from your library before exporting.");
-      return;
-    }
     const format = mode === "kindle" ? kindleFormat : exportFormat;
-    const params = new URLSearchParams({ mode, format });
-    if (mode === "kindle") params.set("kindleEmail", kindleEmail.trim());
 
     setExportBusy(true);
     try {
-      const response = await fetch(`/api/project/${projectId}/export?${params.toString()}`);
+      const response = await fetch("/api/book/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          format,
+          kindleEmail: kindleEmail.trim(),
+          book: {
+            title: book.title,
+            synopsis: book.synopsis,
+            chapters: book.chapters.map((chapter) => ({
+              number: chapter.number,
+              title: chapter.title,
+              content: chapter.content,
+            })),
+          },
+        }),
+      });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error ?? `HTTP ${response.status}`);
@@ -2138,7 +2149,7 @@ function ReaderInner() {
     } finally {
       setExportBusy(false);
     }
-  }, [downloadFromResponse, exportFormat, kindleEmail, kindleFormat, projectId]);
+  }, [book.chapters, book.synopsis, book.title, downloadFromResponse, exportFormat, kindleEmail, kindleFormat]);
 
   const currentProgress = pages.length > 1 ? Math.round((currentPage / (pages.length - 1)) * 100) : 100;
 

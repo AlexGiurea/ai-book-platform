@@ -3,7 +3,7 @@ import type { BookProject } from "@/lib/agent/types";
 
 export type ExportFormat = "pdf" | "epub";
 
-interface ExportBook {
+export interface ExportBook {
   title: string;
   author: string;
   synopsis: string;
@@ -253,6 +253,13 @@ export async function exportProjectBook(
   format: ExportFormat
 ): Promise<ExportArtifact> {
   const book = projectToExportBook(project);
+  return exportBook(book, format);
+}
+
+export async function exportBook(
+  book: ExportBook,
+  format: ExportFormat
+): Promise<ExportArtifact> {
   const base = safeFilename(book.title);
   if (format === "epub") {
     return {
