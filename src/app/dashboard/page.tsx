@@ -38,12 +38,6 @@ interface ApiProject {
   input: { preferences: { genre: string; tone: string } };
 }
 
-const stats = [
-  { label: "Books created", value: "4", icon: BookOpen },
-  { label: "Total words", value: "64.9k", icon: Edit3 },
-  { label: "Illustrations", value: "18", icon: Wand2 },
-];
-
 const statusMeta: Record<string, { label: string; color: string; bg: string; icon: typeof CheckCircle2 }> = {
   complete: {
     label: "Complete",
@@ -126,7 +120,20 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const books = liveBooks.length ? liveBooks : dashboardBooks;
+  const exampleBookIds = new Set(dashboardBooks.map((book) => book.id));
+  const books = [
+    ...dashboardBooks,
+    ...liveBooks.filter((book) => !exampleBookIds.has(book.id)),
+  ];
+  const libraryStats = [
+    { label: "Books created", value: String(books.length), icon: BookOpen },
+    {
+      label: "Total words",
+      value: `${(books.reduce((total, book) => total + book.wordCount, 0) / 1000).toFixed(1)}k`,
+      icon: Edit3,
+    },
+    { label: "Illustrations", value: "0", icon: Wand2 },
+  ];
 
   return (
     <div className="min-h-screen bg-parchment-100">
@@ -170,7 +177,7 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
         >
-          {stats.map((s) => (
+          {libraryStats.map((s) => (
             <div
               key={s.label}
               className="glass-card rounded-2xl p-5 flex items-center gap-4"
@@ -467,7 +474,7 @@ export default function DashboardPage() {
                       Back to library
                     </button>
                     <Link
-                      href={`/reader${previewBook.id.startsWith("sample-") ? "" : `?id=${previewBook.id}`}`}
+                      href={exampleBookIds.has(previewBook.id) ? "/reader" : `/reader?id=${previewBook.id}`}
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-ink-500 px-5 py-2.5 text-sm font-medium text-parchment-50 shadow-warm transition-all hover:bg-ink-400"
                     >
                       <BookOpen size={14} />

@@ -1,3 +1,5 @@
+import type { SubscriptionPlan } from "@/lib/plans";
+
 export type LengthPreset = "dev" | "short" | "medium" | "long" | "large" | "tome";
 
 export interface Preferences {
@@ -172,6 +174,8 @@ export type ProjectStatus =
 
 export interface BookProject {
   id: string;
+  userId?: string;
+  plan: SubscriptionPlan;
   input: ProjectInput;
   status: ProjectStatus;
   bible?: StoryBible;

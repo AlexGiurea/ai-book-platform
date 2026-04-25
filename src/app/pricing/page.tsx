@@ -145,7 +145,7 @@ export default function PricingPage() {
           {[
             { icon: Sparkles, title: "Plan-aware models", body: "Free is wired for GPT-5.4 mini. Pro is wired for GPT-5.5." },
             { icon: FileText, title: "Publishing path", body: "Pro is where longer books, PDF, EPUB, and cover polish will live." },
-            { icon: ShieldCheck, title: "Project-owned", body: "Projects stay tied to your private library and generation history." },
+            { icon: ShieldCheck, title: "Account-owned", body: "Projects stay tied to your signed-in account and private library." },
             { icon: Zap, title: "Billing-ready", body: "The code already records plan membership without turning payments on yet." },
           ].map(({ icon: Icon, title, body }) => (
             <div key={title} className="rounded-2xl border border-parchment-300/70 bg-white/65 p-5 shadow-warm-sm">

@@ -1,4 +1,9 @@
 import { getSql, hasDatabaseUrl } from "@/lib/db/postgres";
+import {
+  ACTIVE_DEVELOPMENT_PLAN,
+  normalizePlan,
+  type SubscriptionPlan,
+} from "@/lib/plans";
 import type {
   Batch,
   BatchEvent,
@@ -48,6 +53,8 @@ function iso(value: unknown): string {
 
 type ProjectRow = {
   id: string;
+  user_id: string | null;
+  plan: string | null;
   input: ProjectInput;
   status: ProjectStatus;
   target_words: number;
@@ -134,6 +141,8 @@ function mapJob(row: JobRow): GenerationJob {
 function mapProject(row: ProjectRow, batches: Batch[], events: BatchEvent[]): BookProject {
   return {
     id: row.id,
+    userId: row.user_id ?? undefined,
+    plan: normalizePlan(row.plan),
     input: row.input,
     status: row.status,
     bible: row.bible ?? undefined,
@@ -173,12 +182,19 @@ export class ContextStore {
     return hasDatabaseUrl();
   }
 
-  async createProject(input: ProjectInput): Promise<BookProject> {
+  async createProject(
+    input: ProjectInput,
+    userId?: string,
+    plan: SubscriptionPlan = ACTIVE_DEVELOPMENT_PLAN
+  ): Promise<BookProject> {
     const targetWords = LENGTH_TARGET_WORDS[input.preferences.length];
     const expectedBatches = Math.max(1, Math.round(targetWords / WORDS_PER_BATCH));
     const now = new Date().toISOString();
+    const projectPlan = normalizePlan(plan);
     const project: BookProject = {
       id: makeId(),
+      userId,
+      plan: projectPlan,
       input,
       status: "queued",
       batches: [],
@@ -199,10 +215,10 @@ export class ContextStore {
     const sql = getSql();
     await sql`
       insert into projects (
-        id, input, status, target_words, total_words, expected_batches,
+        id, user_id, plan, input, status, target_words, total_words, expected_batches,
         cover_status, created_at, updated_at
       ) values (
-        ${project.id}, ${JSON.stringify(input)}::jsonb, ${project.status},
+        ${project.id}, ${userId ?? null}, ${projectPlan}, ${JSON.stringify(input)}::jsonb, ${project.status},
         ${targetWords}, 0, ${expectedBatches}, ${project.coverStatus},
         ${now}, ${now}
       )
@@ -232,6 +248,15 @@ export class ContextStore {
     ]);
 
     return mapProject(row, batchRows.map(mapBatch), eventRows.map(mapEvent));
+  }
+
+  async getProjectForUser(
+    id: string,
+    userId: string
+  ): Promise<BookProject | undefined> {
+    const project = await this.getProject(id);
+    if (!project || project.userId !== userId) return undefined;
+    return project;
   }
 
   async updateStatus(id: string, status: ProjectStatus, error?: string): Promise<void> {
@@ -656,6 +681,23 @@ export class ContextStore {
     const sql = getSql();
     const rows = (await sql`
       select * from projects order by created_at desc
+    `) as ProjectRow[];
+    const projects = await Promise.all(rows.map((row) => this.getProject(row.id)));
+    return projects.filter((project): project is BookProject => Boolean(project));
+  }
+
+  async listProjectsForUser(userId: string): Promise<BookProject[]> {
+    if (!this.persistent) {
+      return Array.from(memory.projects.values())
+        .filter((project) => project.userId === userId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+
+    const sql = getSql();
+    const rows = (await sql`
+      select * from projects
+      where user_id = ${userId}
+      order by created_at desc
     `) as ProjectRow[];
     const projects = await Promise.all(rows.map((row) => this.getProject(row.id)));
     return projects.filter((project): project is BookProject => Boolean(project));

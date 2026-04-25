@@ -3,141 +3,157 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowRight, BookOpen, Heart, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  Feather,
+  Heart,
+  Lightbulb,
+  Sparkles,
+} from "lucide-react";
 import Navbar from "@/components/Navbar";
 
-const principles = [
+const beliefs = [
   {
-    title: "Creativity first",
-    copy: "AI should expand the surface area of imagination, not flatten it into predictable templates.",
+    icon: Lightbulb,
+    title: "The idea stays yours",
+    body: "AI should not replace the strange, personal spark that makes someone want to tell a story. It should help protect it long enough to become real.",
   },
   {
-    title: "The user remains the origin",
-    copy: "The first spark, the taste, the dream, and the final yes still belong to the person creating.",
+    icon: Feather,
+    title: "Structure can serve wonder",
+    body: "Planning, chapters, continuity, and covers are not cold machinery. They are scaffolding for imagination to climb higher.",
   },
   {
-    title: "A finished artifact matters",
-    copy: "Ideas deserve more than a chat response. They deserve shape, memory, chapters, covers, and a place to be read.",
+    icon: Heart,
+    title: "Reading is the reward",
+    body: "The goal is not a prompt result. The goal is holding a finished piece of art that feels like it came from a dream you almost forgot.",
   },
 ];
 
 export default function AboutPage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-parchment-100">
+    <div className="min-h-screen overflow-hidden bg-parchment-100">
       <Navbar />
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -left-36 top-16 h-[520px] w-[520px] rounded-full bg-ember-200/35 blur-[110px]" />
-        <div className="absolute right-0 top-1/3 h-[560px] w-[560px] rounded-full bg-dust-200/40 blur-[120px]" />
-      </div>
+      <main className="relative mx-auto max-w-7xl px-6 pb-24 pt-28">
+        <div className="pointer-events-none fixed inset-0 overflow-hidden">
+          <div className="absolute right-[-10rem] top-10 h-[34rem] w-[34rem] rounded-full bg-ember-100/50 blur-[115px]" />
+          <div className="absolute bottom-[-12rem] left-[-8rem] h-[30rem] w-[30rem] rounded-full bg-dust-100/45 blur-[110px]" />
+        </div>
 
-      <section className="relative z-10 mx-auto grid max-w-7xl items-center gap-12 px-6 pb-24 pt-32 lg:grid-cols-[0.95fr_1.05fr]">
-        <motion.div
-          initial={{ opacity: 0, y: 28 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <span className="inline-flex items-center gap-2 rounded-full border border-ember-200 bg-ember-100 px-3 py-1 text-xs font-medium text-ember-600">
-            <Heart size={12} />
-            About Folio
-          </span>
-          <h1 className="mt-7 font-serif text-5xl font-bold leading-[1.05] tracking-tight text-ink-500 md:text-7xl">
-            We are not here to replace imagination.
-          </h1>
-          <p className="mt-7 text-lg leading-relaxed text-ink-300 md:text-xl">
-            Folio exists for the person who has carried a world in their head
-            for years, the student with a wild premise, the parent with a bedtime
-            story, the builder with a vision that has never quite made it onto
-            the page.
-          </p>
-          <p className="mt-5 text-lg leading-relaxed text-ink-300">
-            Our purpose is not to inhibit creativity by having AI simply write
-            books for people. It is to help a user&apos;s dream unfold into something
-            tangible: an idea shaped into structure, structure shaped into prose,
-            and prose shaped into a piece of art they can hold, read, revisit,
-            and enjoy.
-          </p>
-          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/create"
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-ember-500 px-7 py-3.5 text-sm font-medium text-white shadow-ember transition hover:bg-ember-600"
-            >
-              Start your book
-              <ArrowRight size={15} />
-            </Link>
-            <Link
-              href="/product"
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-parchment-300/70 bg-white/70 px-7 py-3.5 text-sm font-medium text-ink-400 shadow-warm-sm backdrop-blur transition hover:bg-white"
-            >
-              <BookOpen size={15} />
-              See how it works
-            </Link>
-          </div>
-        </motion.div>
-
-        <motion.div
-          className="relative"
-          initial={{ opacity: 0, scale: 0.96, y: 24 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
-        >
+        <section className="relative grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
           <motion.div
-            aria-hidden
-            className="absolute -left-4 -top-4 h-20 w-20 rounded-full bg-ember-300/50 blur-2xl"
-            animate={{ scale: [1, 1.25, 1], opacity: [0.45, 0.78, 0.45] }}
-            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-          />
-          <div className="relative overflow-hidden rounded-[2.2rem] border border-white/70 bg-white/60 p-3 shadow-glass backdrop-blur-xl">
-            <Image
-              src="/generated/folio-about-vision.svg"
-              alt="A glowing idea unfolding into manuscript pages and a finished illustrated book."
-              width={1400}
-              height={1100}
-              priority
-              className="h-auto w-full rounded-[1.7rem]"
-            />
-          </div>
-        </motion.div>
-      </section>
+            initial={false}
+            animate={{ opacity: 1, y: 0 }}
+            className="relative z-10"
+          >
+            <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-ember-200 bg-ember-100 px-3 py-1 text-xs font-medium text-ember-600">
+              <Sparkles size={12} />
+              About Folio
+            </span>
+            <h1 className="font-serif text-5xl font-bold leading-tight text-ink-500 md:text-7xl">
+              We are not here to make imagination smaller
+            </h1>
+            <div className="mt-7 max-w-2xl space-y-5 text-lg leading-relaxed text-ink-300">
+              <p>
+                Folio exists for the person who has carried a story, a world, a
+                memory, or a wild impossible premise for years and never found
+                the time, structure, or stamina to turn it into something they
+                could actually read.
+              </p>
+              <p>
+                The point is not to inhibit creativity by asking AI to replace
+                the author. The point is to let a dream escape the notebook and
+                become a finished piece of art: planned, written, covered,
+                stored, and ready to be enjoyed.
+              </p>
+              <p>
+                We want Folio to feel less like automation and more like a
+                studio assistant that clears the path between a fragile idea and
+                the book-shaped thing it always wanted to become.
+              </p>
+            </div>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/signup"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-ember-500 px-6 py-3 text-sm font-medium text-white shadow-ember transition hover:bg-ember-600"
+              >
+                Start with an idea
+                <ArrowRight size={15} />
+              </Link>
+              <Link
+                href="/reader"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-parchment-300 bg-white/70 px-6 py-3 text-sm font-medium text-ink-400 shadow-warm-sm transition hover:bg-white"
+              >
+                <BookOpen size={15} />
+                Read an example
+              </Link>
+            </div>
+          </motion.div>
 
-      <section className="relative z-10 mx-auto max-w-6xl px-6 pb-28">
-        <motion.div
-          className="mb-12 text-center"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-        >
-          <Sparkles className="mx-auto mb-4 text-ember-500" size={24} />
-          <h2 className="font-serif text-3xl font-semibold text-ink-500 md:text-4xl">
-            The vision is simple.
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg leading-relaxed text-ink-300">
-            Give people a beautiful way to move from &quot;I have an idea&quot; to
-            &quot;I made something I can read.&quot;
-          </p>
-        </motion.div>
+          <motion.div
+            className="relative z-10"
+            initial={{ opacity: 0, x: 28 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <div className="relative mx-auto max-w-[520px]">
+              <motion.div
+                aria-hidden
+                className="absolute -inset-5 rounded-[2rem] border border-ember-200/70"
+                animate={{ rotate: [-1, 1, -1], y: [0, -8, 0] }}
+                transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+              />
+              <div className="relative overflow-hidden rounded-[2rem] border border-parchment-300 bg-ink-500 shadow-warm-xl">
+                <Image
+                  src="/about-vision.png"
+                  alt="A luminous book unfolding from an idea in a writer's notebook"
+                  width={1024}
+                  height={1536}
+                  priority
+                  className="h-[680px] w-full object-cover"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-500 via-ink-500/70 to-transparent p-6 pt-24 text-parchment-50">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-ember-300">
+                    The vision
+                  </p>
+                  <p className="mt-2 max-w-sm font-serif text-2xl font-semibold leading-tight">
+                    A private spark becoming a book you can return to.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </section>
 
-        <div className="grid gap-5 md:grid-cols-3">
-          {principles.map((principle, index) => (
-            <motion.article
-              key={principle.title}
-              className="glass-card rounded-3xl p-7"
-              initial={{ opacity: 0, y: 22 }}
+        <section className="relative z-10 mt-20 grid gap-5 md:grid-cols-3">
+          {beliefs.map(({ icon: Icon, title, body }, index) => (
+            <motion.div
+              key={title}
+              className="rounded-3xl border border-parchment-300/70 bg-white/65 p-6 shadow-warm-sm"
+              initial={{ opacity: 0, y: 18 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ delay: index * 0.08, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ delay: index * 0.08, duration: 0.5 }}
             >
-              <span className="mb-5 flex h-10 w-10 items-center justify-center rounded-2xl bg-ember-100 font-serif text-lg font-semibold text-ember-600">
-                {index + 1}
-              </span>
-              <h3 className="font-serif text-xl font-semibold text-ink-500">
-                {principle.title}
-              </h3>
-              <p className="mt-3 leading-relaxed text-ink-300">{principle.copy}</p>
-            </motion.article>
+              <Icon size={20} className="mb-5 text-ember-600" />
+              <h2 className="font-serif text-2xl font-semibold text-ink-500">
+                {title}
+              </h2>
+              <p className="mt-3 text-sm leading-relaxed text-ink-300">{body}</p>
+            </motion.div>
           ))}
-        </div>
-      </section>
-    </main>
+        </section>
+
+        <section className="relative z-10 mx-auto mt-20 max-w-4xl text-center">
+          <div className="rounded-[2rem] border border-parchment-300/70 bg-white/65 p-10 shadow-warm-sm">
+            <p className="font-serif text-3xl font-semibold leading-tight text-ink-500 md:text-4xl">
+              Folio is for the moment when a story stops being something you
+              might write someday and becomes something you can finally read.
+            </p>
+          </div>
+        </section>
+      </main>
+    </div>
   );
 }

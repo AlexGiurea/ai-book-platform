@@ -1,4 +1,11 @@
 import OpenAI from "openai";
+import {
+  ACTIVE_DEVELOPMENT_PLAN,
+  FREE_PLAN_MODEL,
+  PRO_PLAN_MODEL,
+  normalizePlan,
+  type SubscriptionPlan,
+} from "@/lib/plans";
 
 let cached: OpenAI | null = null;
 
@@ -14,8 +21,12 @@ export function getOpenAIClient(): OpenAI {
   return cached;
 }
 
-export function getModelName(): string {
-  return process.env.OPENAI_MODEL ?? "gpt-5.1";
+export function getModelName(plan: SubscriptionPlan = ACTIVE_DEVELOPMENT_PLAN): string {
+  const normalized = normalizePlan(plan);
+  if (normalized === "free") {
+    return process.env.OPENAI_FREE_MODEL ?? FREE_PLAN_MODEL;
+  }
+  return process.env.OPENAI_PRO_MODEL ?? process.env.OPENAI_MODEL ?? PRO_PLAN_MODEL;
 }
 
 export function getImageModelName(): string {

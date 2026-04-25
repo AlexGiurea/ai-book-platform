@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { store } from "@/lib/agent";
 import type { ProjectInput } from "@/lib/agent";
+import { getCurrentUser } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Sign in to create a book." }, { status: 401 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -38,24 +44,28 @@ export async function POST(request: Request) {
     );
   }
 
-  const project = await store.createProject({
-    idea: typeof input.idea === "string" ? input.idea : "",
-    preferences: {
-      genre: input.preferences.genre ?? "",
-      tone: input.preferences.tone ?? "",
-      length: input.preferences.length ?? "medium",
-      imageStyle: input.preferences.imageStyle ?? "",
-      pov: input.preferences.pov ?? "",
+  const project = await store.createProject(
+    {
+      idea: typeof input.idea === "string" ? input.idea : "",
+      preferences: {
+        genre: input.preferences.genre ?? "",
+        tone: input.preferences.tone ?? "",
+        length: input.preferences.length ?? "medium",
+        imageStyle: input.preferences.imageStyle ?? "",
+        pov: input.preferences.pov ?? "",
+      },
+      inputMode: input.inputMode ?? "text",
+      contextFileNames: input.contextFileNames,
+      contextFileContents: input.contextFileContents,
+      canvas: canvas && {
+        characters: canvas.characters ?? [],
+        world: canvas.world ?? [],
+        notes: canvas.notes ?? [],
+      },
     },
-    inputMode: input.inputMode ?? "text",
-    contextFileNames: input.contextFileNames,
-    contextFileContents: input.contextFileContents,
-    canvas: canvas && {
-      characters: canvas.characters ?? [],
-      world: canvas.world ?? [],
-      notes: canvas.notes ?? [],
-    },
-  });
+    user.id,
+    user.plan
+  );
 
   await store.enqueueJob(project.id, "plan");
 
