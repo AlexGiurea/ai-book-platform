@@ -468,7 +468,7 @@ export default function LandingPage() {
             Folio
           </span>
         </div>
-        <div className="hidden md:flex items-center gap-3">
+        <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-3 md:flex">
           <Link
             href="/product"
             className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
@@ -487,14 +487,14 @@ export default function LandingPage() {
           >
             About
           </Link>
-          <Link
-            href="/create"
-            className="flex items-center gap-1.5 px-4 py-2 bg-ink-500 hover:bg-ink-400 text-parchment-50 text-sm font-medium rounded-lg transition-all duration-150 shadow-warm-sm hover:shadow-warm"
-          >
-            Start creating
-            <ArrowRight size={13} />
-          </Link>
         </div>
+        <Link
+          href="/create"
+          className="flex items-center gap-1.5 px-4 py-2 bg-ink-500 hover:bg-ink-400 text-parchment-50 text-sm font-medium rounded-lg transition-all duration-150 shadow-warm-sm hover:shadow-warm"
+        >
+          Start creating
+          <ArrowRight size={13} />
+        </Link>
       </nav>
 
       {/* Hero */}
