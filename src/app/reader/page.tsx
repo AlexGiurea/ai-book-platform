@@ -74,6 +74,7 @@ interface ApiProject {
 
 type ReaderMode = "kindle" | "book";
 type ReaderWidth = "narrow" | "comfortable" | "wide";
+type ExportFormat = "pdf" | "epub";
 
 interface ReaderSettings {
   columns: 1 | 2;
@@ -2063,6 +2064,12 @@ function ReaderInner() {
   const [showSettings, setShowSettings] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [bookmarked, setBookmarked] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("pdf");
+  const [kindleFormat, setKindleFormat] = useState<ExportFormat>("epub");
+  const [kindleEmail, setKindleEmail] = useState("");
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
   const [settings, setSettings] = useState<ReaderSettings>({
     columns: 2,
     fontSize: 18,
@@ -2086,6 +2093,52 @@ function ReaderInner() {
   const handleNavigate = useCallback((n: number) => {
     setCurrentPage(Math.max(0, Math.min(n, pages.length - 1)));
   }, [pages.length]);
+
+  const downloadFromResponse = useCallback(async (response: Response) => {
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") ?? "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match?.[1] ?? "folio-export";
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const runExport = useCallback(async (mode: "download" | "kindle") => {
+    setExportError(null);
+    setExportMessage(null);
+    if (!projectId) {
+      setExportError("Open a saved book from your library before exporting.");
+      return;
+    }
+    const format = mode === "kindle" ? kindleFormat : exportFormat;
+    const params = new URLSearchParams({ mode, format });
+    if (mode === "kindle") params.set("kindleEmail", kindleEmail.trim());
+
+    setExportBusy(true);
+    try {
+      const response = await fetch(`/api/project/${projectId}/export?${params.toString()}`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `HTTP ${response.status}`);
+      }
+      await downloadFromResponse(response);
+      setExportMessage(
+        mode === "kindle"
+          ? "Kindle email file downloaded. Open it in your mail app and send it to deliver the attachment."
+          : `${format.toUpperCase()} export downloaded.`
+      );
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setExportBusy(false);
+    }
+  }, [downloadFromResponse, exportFormat, kindleEmail, kindleFormat, projectId]);
 
   const currentProgress = pages.length > 1 ? Math.round((currentPage / (pages.length - 1)) * 100) : 100;
 
@@ -2241,7 +2294,7 @@ function ReaderInner() {
         </div>
       </div>
 
-      {/* Upgrade modal */}
+      {/* Export modal */}
       <AnimatePresence>
         {showUpgradeModal && (
           <>
@@ -2258,7 +2311,14 @@ function ReaderInner() {
               transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
             >
               <div className="glass-card rounded-3xl p-8 relative">
-                <button onClick={() => setShowUpgradeModal(false)} className="absolute top-4 right-4 text-ink-200 hover:text-ink-400 p-2 rounded-lg hover:bg-parchment-200/60">
+                <button
+                  onClick={() => {
+                    setShowUpgradeModal(false);
+                    setExportError(null);
+                    setExportMessage(null);
+                  }}
+                  className="absolute top-4 right-4 text-ink-200 hover:text-ink-400 p-2 rounded-lg hover:bg-parchment-200/60"
+                >
                   <X size={16} />
                 </button>
                 <div className="w-14 h-14 rounded-2xl bg-ember-100 border border-ember-200 flex items-center justify-center mb-6">
@@ -2266,24 +2326,83 @@ function ReaderInner() {
                 </div>
                 <h2 className="font-serif text-2xl font-bold text-ink-500 mb-3">Export your book</h2>
                 <p className="text-ink-300 text-sm leading-relaxed mb-7">
-                  Export as a beautifully formatted PDF or EPUB with a premium subscription.
+                  Download your manuscript as PDF or EPUB, or create a Kindle-ready email with the selected file attached.
                 </p>
-                <div className="space-y-2 mb-7">
-                  {["PDF & EPUB export", "Saved private projects", "Longer books (up to 20 chapters)", "Higher-quality illustrations", "Priority generation"].map((f) => (
-                    <div key={f} className="flex items-center gap-2.5">
-                      <div className="w-4 h-4 rounded-full bg-ember-100 border border-ember-300 flex items-center justify-center flex-shrink-0">
-                        <div className="w-1.5 h-1.5 rounded-full bg-ember-500" />
-                      </div>
-                      <span className="text-sm text-ink-400">{f}</span>
-                    </div>
-                  ))}
+
+                <div className="mb-6 rounded-2xl border border-parchment-300/70 bg-white/70 p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+                    Download
+                  </p>
+                  <div className="mb-4 grid grid-cols-2 gap-2">
+                    {(["pdf", "epub"] as ExportFormat[]).map((format) => (
+                      <button
+                        key={format}
+                        type="button"
+                        onClick={() => setExportFormat(format)}
+                        className={cn(
+                          "rounded-xl border px-3 py-2 text-sm font-medium uppercase transition",
+                          exportFormat === format
+                            ? "border-ember-300 bg-ember-100 text-ember-700"
+                            : "border-parchment-300 bg-white text-ink-300 hover:text-ink-500"
+                        )}
+                      >
+                        {format}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => runExport("download")}
+                    disabled={exportBusy}
+                    className="w-full py-3 bg-ink-500 hover:bg-ink-400 disabled:cursor-not-allowed disabled:opacity-60 text-parchment-50 font-medium rounded-xl transition-all text-sm shadow-warm"
+                  >
+                    {exportBusy ? "Preparing export..." : `Download ${exportFormat.toUpperCase()}`}
+                  </button>
                 </div>
-                <button className="w-full py-3.5 bg-ember-500 hover:bg-ember-600 text-white font-medium rounded-xl transition-all text-sm shadow-ember">
-                  Upgrade to Premium
-                </button>
-                <button onClick={() => setShowUpgradeModal(false)} className="w-full py-2.5 text-ink-300 hover:text-ink-500 text-sm font-medium mt-2 rounded-xl hover:bg-parchment-200/60 transition-colors">
-                  Continue reading for free
-                </button>
+
+                <div className="rounded-2xl border border-parchment-300/70 bg-parchment-50/80 p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-ember-600">
+                    Send to Kindle workflow
+                  </p>
+                  <input
+                    value={kindleEmail}
+                    onChange={(event) => setKindleEmail(event.target.value)}
+                    placeholder="your-name@kindle.com"
+                    className="mb-3 w-full rounded-xl border border-parchment-300 bg-white px-3 py-2.5 text-sm text-ink-500 outline-none transition focus:border-ember-300"
+                  />
+                  <div className="mb-4 grid grid-cols-2 gap-2">
+                    {(["epub", "pdf"] as ExportFormat[]).map((format) => (
+                      <button
+                        key={format}
+                        type="button"
+                        onClick={() => setKindleFormat(format)}
+                        className={cn(
+                          "rounded-xl border px-3 py-2 text-sm font-medium uppercase transition",
+                          kindleFormat === format
+                            ? "border-ember-300 bg-ember-100 text-ember-700"
+                            : "border-parchment-300 bg-white text-ink-300 hover:text-ink-500"
+                        )}
+                      >
+                        {format}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => runExport("kindle")}
+                    disabled={exportBusy}
+                    className="w-full py-3 bg-ember-500 hover:bg-ember-600 disabled:cursor-not-allowed disabled:opacity-60 text-white font-medium rounded-xl transition-all text-sm shadow-ember"
+                  >
+                    {exportBusy ? "Preparing Kindle email..." : "Download Kindle email"}
+                  </button>
+                  <p className="mt-3 text-xs leading-relaxed text-ink-300">
+                    This downloads a ready-to-send .eml file with the export attached. Open it in your email app and send it to your Kindle address.
+                  </p>
+                </div>
+
+                {(exportError || exportMessage) && (
+                  <p className={cn("mt-4 rounded-xl px-3 py-2 text-sm", exportError ? "bg-red-50 text-red-700" : "bg-sage-100 text-ink-400")}>
+                    {exportError || exportMessage}
+                  </p>
+                )}
               </div>
             </motion.div>
           </>
