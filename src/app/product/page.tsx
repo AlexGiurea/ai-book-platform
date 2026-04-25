@@ -78,8 +78,8 @@ export default function ProductPage() {
         const angle = (index / stages.length) * Math.PI * 2 - Math.PI / 2;
         return {
           ...stage,
-          x: Math.cos(angle) * 42 + 50,
-          y: Math.sin(angle) * 38 + 50,
+          x: Math.cos(angle) * 34 + 50,
+          y: Math.sin(angle) * 30 + 50,
         };
       }),
     []
@@ -94,7 +94,7 @@ export default function ProductPage() {
           <div className="absolute bottom-[-10rem] right-[-8rem] h-[30rem] w-[30rem] rounded-full bg-dust-100/45 blur-[110px]" />
         </div>
 
-        <section className="relative grid min-h-[760px] gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
+        <section className="relative grid min-h-[680px] gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
           <motion.div
             initial={false}
             animate={{ opacity: 1, y: 0 }}
@@ -142,22 +142,32 @@ export default function ProductPage() {
             </div>
           </motion.div>
 
-          <div className="relative z-10 min-h-[680px]">
+          <div className="relative z-10 min-h-[560px]">
             <motion.div
-              className="absolute inset-0 rounded-[2rem] border border-parchment-300/70 bg-white/35 shadow-warm-xl backdrop-blur"
-              animate={{ rotate: [0, 0.5, 0], y: [0, -8, 0] }}
+              className="absolute inset-x-4 inset-y-8 rounded-[2rem] border border-parchment-300/70 bg-white/40 shadow-warm-xl backdrop-blur"
+              animate={{ rotate: [0, 0.4, 0], y: [0, -7, 0] }}
               transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
             />
-            <div className="absolute inset-5 overflow-hidden rounded-[1.55rem] border border-parchment-300/70 bg-ink-500 text-parchment-50">
+            <div className="absolute inset-x-8 inset-y-12 overflow-hidden rounded-[1.65rem] border border-parchment-300/70 bg-ink-500 text-parchment-50 shadow-2xl">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(232,184,135,0.22),transparent_35%),radial-gradient(circle_at_78%_68%,rgba(185,215,223,0.16),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.06),transparent_45%)]" />
+              <div className="absolute inset-x-8 top-7 z-20 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.22em] text-parchment-300/70">
+                <span>Folio Engine</span>
+                <span>Live Map</span>
+              </div>
               <motion.div
-                className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full border border-ember-300/30"
+                className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full border border-ember-300/30"
                 animate={{ rotate: 360 }}
                 transition={{ duration: 36, repeat: Infinity, ease: "linear" }}
               />
               <motion.div
-                className="absolute left-1/2 top-1/2 h-[28rem] w-[28rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-parchment-50/10"
+                className="absolute left-1/2 top-1/2 h-[23rem] w-[23rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-parchment-50/10"
                 animate={{ rotate: -360 }}
                 transition={{ duration: 52, repeat: Infinity, ease: "linear" }}
+              />
+              <motion.div
+                className="absolute left-1/2 top-1/2 h-40 w-40 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ember-500/15 blur-3xl"
+                animate={{ scale: [1, 1.18, 1], opacity: [0.45, 0.75, 0.45] }}
+                transition={{ duration: 4.8, repeat: Infinity, ease: "easeInOut" }}
               />
 
               {orbit.map((stage, index) => {
@@ -168,7 +178,7 @@ export default function ProductPage() {
                     key={stage.id}
                     type="button"
                     onClick={() => setActive(index)}
-                    className={`absolute z-20 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border text-xs font-semibold shadow-warm transition ${
+                    className={`absolute z-20 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-2xl border text-[11px] font-semibold shadow-warm transition ${
                       selected
                         ? "border-ember-300 bg-ember-500 text-white"
                         : "border-white/10 bg-white/8 text-parchment-300 hover:bg-white/14"
@@ -188,32 +198,32 @@ export default function ProductPage() {
                 );
               })}
 
-              <div className="absolute left-1/2 top-1/2 z-10 w-[21rem] -translate-x-1/2 -translate-y-1/2 rounded-[1.5rem] border border-white/10 bg-parchment-50 p-5 text-ink-500 shadow-warm-xl">
+              <div className="absolute left-1/2 top-1/2 z-10 w-[19rem] -translate-x-1/2 -translate-y-1/2 rounded-[1.6rem] border border-white/10 bg-parchment-50/96 p-4 text-ink-500 shadow-warm-xl backdrop-blur">
                 <motion.div
                   key={current.id}
                   initial={{ opacity: 0, scale: 0.94, y: 14 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={{ duration: 0.45, ease: smoothEase }}
                 >
-                  <div className="mb-5 flex items-center justify-between">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink-500 text-parchment-50">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-ink-500 text-parchment-50 shadow-warm-sm">
                       <ActiveIcon size={20} />
                     </div>
-                    <span className="rounded-full bg-ember-100 px-3 py-1 text-xs font-medium text-ember-700">
+                    <span className="rounded-full bg-ember-100 px-3 py-1 text-[11px] font-medium text-ember-700">
                       {current.artifact}
                     </span>
                   </div>
-                  <h2 className="font-serif text-3xl font-bold leading-tight">
+                  <h2 className="font-serif text-2xl font-bold leading-tight">
                     {current.title}
                   </h2>
-                  <p className="mt-4 text-sm leading-relaxed text-ink-300">
+                  <p className="mt-3 text-sm leading-relaxed text-ink-300">
                     {current.body}
                   </p>
-                  <div className="mt-5 rounded-2xl border border-parchment-300 bg-white/80 p-4">
+                  <div className="mt-4 rounded-2xl border border-parchment-300 bg-white/80 p-3">
                     <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-ember-600">
                       Live signal
                     </p>
-                    <p className="font-serif text-lg leading-snug text-ink-500">
+                    <p className="font-serif text-base leading-snug text-ink-500">
                       {current.sample}
                     </p>
                   </div>
@@ -222,7 +232,7 @@ export default function ProductPage() {
 
               <motion.div
                 aria-hidden
-                className="absolute bottom-8 left-8 right-8 z-20 h-2 overflow-hidden rounded-full bg-white/10"
+                className="absolute bottom-7 left-8 right-8 z-20 h-1.5 overflow-hidden rounded-full bg-white/10"
               >
                 <motion.div
                   className="h-full rounded-full bg-ember-500"

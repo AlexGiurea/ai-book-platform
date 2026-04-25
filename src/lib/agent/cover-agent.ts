@@ -100,7 +100,7 @@ export class CoverAgent {
       }
 
       const imageBuffer = Buffer.from(image.b64_json, "base64");
-      const fileName = `${projectId}.png`;
+      const fileName = `${projectId}-${Date.now()}.png`;
       let imageUrl: string;
 
       if (process.env.BLOB_READ_WRITE_TOKEN) {
@@ -111,6 +111,11 @@ export class CoverAgent {
         });
         imageUrl = blob.url;
       } else {
+        if (process.env.VERCEL) {
+          throw new Error(
+            "BLOB_READ_WRITE_TOKEN is required for cover images on Vercel."
+          );
+        }
         const dir = path.join(process.cwd(), "public", "generated", "covers");
         await mkdir(dir, { recursive: true });
         const filePath = path.join(dir, fileName);

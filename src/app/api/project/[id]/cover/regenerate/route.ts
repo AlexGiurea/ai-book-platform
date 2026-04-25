@@ -28,6 +28,7 @@ export async function POST(
     );
   }
 
+  await store.updateCoverStatus(id, "pending");
   await store.enqueueJob(id, "cover", { force: true });
 
   return NextResponse.json({ ok: true, projectId: id });
