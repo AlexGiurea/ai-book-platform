@@ -14,8 +14,12 @@ import {
   ImageIcon,
   KeyRound,
   Layers,
+  Pause,
   PenTool,
+  Play,
   Sparkles,
+  Volume2,
+  VolumeX,
   Wand2,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
@@ -320,6 +324,171 @@ function useTypewriter(text: string, active: boolean, speed = 28) {
 
   if (!active || typingState.text !== text) return "";
   return text.slice(0, typingState.count);
+}
+
+function DemoVideoShowcase() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [muted, setMuted] = useState(true);
+  const [playing, setPlaying] = useState(true);
+
+  const toggleMute = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = !v.muted;
+    setMuted(v.muted);
+  };
+
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      void v.play();
+      setPlaying(true);
+    } else {
+      v.pause();
+      setPlaying(false);
+    }
+  };
+
+  const highlights = [
+    {
+      icon: Wand2,
+      title: "From a sentence",
+      body: "A premise becomes a planned, voiced book in minutes.",
+    },
+    {
+      icon: Layers,
+      title: "Chapter-aware drafting",
+      body: "Each chapter is written with full memory of every word before it.",
+    },
+    {
+      icon: ImageIcon,
+      title: "Cover and atmosphere",
+      body: "A bespoke cover and visual mood land alongside the prose.",
+    },
+  ];
+
+  return (
+    <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+      {/* Copy column */}
+      <motion.div
+        initial={{ opacity: 0, y: 28 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-15%" }}
+        transition={{ duration: 0.7, ease: smoothEase }}
+      >
+        <span className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-ember-200 bg-ember-100 px-3 py-1 text-xs font-medium text-ember-600">
+          <Play size={11} />
+          See Folio in motion
+        </span>
+        <h2 className="font-serif text-4xl font-bold leading-tight tracking-tight text-ink-500 md:text-5xl">
+          A studio that
+          <br />
+          <span className="gradient-text">writes with you</span>
+        </h2>
+        <p className="mt-5 max-w-md text-base leading-relaxed text-ink-300 md:text-lg">
+          Watch a single idea travel through Folio&apos;s pipeline — from the
+          first prompt, through planning and chapter drafting, to a finished
+          illustrated book you can read end to end.
+        </p>
+
+        <ul className="mt-8 space-y-4">
+          {highlights.map((h) => (
+            <li key={h.title} className="flex items-start gap-3">
+              <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-ember-100 text-ember-600 ring-1 ring-ember-200/60">
+                <h.icon size={16} />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-ink-500">{h.title}</p>
+                <p className="mt-0.5 text-sm leading-relaxed text-ink-300">
+                  {h.body}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </motion.div>
+
+      {/* Video column */}
+      <motion.div
+        initial={{ opacity: 0, y: 28, scale: 0.98 }}
+        whileInView={{ opacity: 1, y: 0, scale: 1 }}
+        viewport={{ once: true, margin: "-15%" }}
+        transition={{ duration: 0.8, ease: smoothEase, delay: 0.1 }}
+        className="relative"
+      >
+        {/* Soft ambient halos */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -inset-6 -z-10 rounded-[36px] blur-3xl"
+          style={{
+            background:
+              "radial-gradient(60% 70% at 30% 30%, rgba(201,125,48,0.18), transparent 70%), radial-gradient(50% 60% at 80% 70%, rgba(186,168,140,0.22), transparent 70%)",
+          }}
+        />
+
+        {/* Subtle stacked paper behind the video card */}
+        <motion.div
+          aria-hidden
+          className="absolute -inset-x-3 -bottom-3 top-3 -z-10 rounded-[28px] border border-parchment-300/70 bg-parchment-100/80"
+          animate={{ rotate: [-1.1, -1.4, -1.1] }}
+          transition={{ duration: 11, repeat: Infinity, ease: "easeInOut" }}
+          style={{ filter: "blur(0.5px)" }}
+        />
+
+        <div className="glass-card group relative overflow-hidden rounded-[28px] p-3 shadow-warm-xl">
+          {/* Window-chrome dots, like a polished demo capture */}
+          <div className="flex items-center gap-1.5 px-3 py-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-ember-300/80" />
+            <span className="h-2.5 w-2.5 rounded-full bg-dust-300/80" />
+            <span className="h-2.5 w-2.5 rounded-full bg-sage-400/80" />
+            <span className="ml-3 text-[10px] font-medium uppercase tracking-[0.22em] text-ink-200">
+              folio.app — live demo
+            </span>
+          </div>
+
+          <div className="relative overflow-hidden rounded-2xl bg-ink-500">
+            <video
+              ref={videoRef}
+              src="/folio-demo.mp4"
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="metadata"
+              className="block h-full w-full"
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+            />
+            {/* Soft inner edge for cinematic feel */}
+            <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-white/10" />
+
+            {/* Bottom gradient + controls */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
+            <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={togglePlay}
+                aria-label={playing ? "Pause demo" : "Play demo"}
+                className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition hover:bg-white/25"
+              >
+                {playing ? <Pause size={14} /> : <Play size={14} />}
+              </button>
+              <button
+                type="button"
+                onClick={toggleMute}
+                aria-label={muted ? "Unmute demo" : "Mute demo"}
+                className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-md transition hover:bg-white/25"
+              >
+                {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                {muted ? "Tap to listen" : "Sound on"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
 
 function LivingManuscript() {
@@ -1049,6 +1218,11 @@ export default function LandingPage() {
             See an example book
           </Link>
         </motion.div>
+      </section>
+
+      {/* Demo video — Folio in motion */}
+      <section className="relative z-10 mx-auto max-w-6xl px-8 pb-28">
+        <DemoVideoShowcase />
       </section>
 
       {/* Living manuscript — interactive idea → book preview */}
