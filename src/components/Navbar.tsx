@@ -2,18 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 import {
   BadgeDollarSign,
   BookOpen,
   Info,
   LogIn,
-  LogOut,
   Plus,
   Home,
   Sparkles,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
+import AccountMenu from "@/components/AccountMenu";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { cn } from "@/lib/utils";
 
 interface NavbarProps {
@@ -22,33 +22,12 @@ interface NavbarProps {
 
 export default function Navbar({ variant = "solid" }: NavbarProps) {
   const pathname = usePathname();
-  const [signedIn, setSignedIn] = useState(false);
+  const { user, signedIn } = useAuthUser();
   const appSection =
     pathname === "/dashboard" ||
     pathname === "/create" ||
     pathname === "/generating" ||
     pathname.startsWith("/reader");
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data: { user?: unknown }) => {
-        if (!cancelled) setSignedIn(Boolean(data.user));
-      })
-      .catch(() => {
-        if (!cancelled) setSignedIn(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-    window.location.href = "/";
-  }
-
   const navLinks = appSection
     ? [
         { href: "/dashboard", label: "Library", icon: BookOpen },
@@ -100,16 +79,7 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
               Landing page
             </Link>
           )}
-          {signedIn ? (
-            <button
-              type="button"
-              onClick={logout}
-              className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-300 transition-colors hover:bg-parchment-200/60 hover:text-ink-500 sm:flex"
-            >
-              <LogOut size={14} />
-              Sign out
-            </button>
-          ) : (
+          {!signedIn && (
             <Link
               href="/signin"
               className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-300 transition-colors hover:bg-parchment-200/60 hover:text-ink-500 sm:flex"
@@ -125,6 +95,7 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
             {signedIn ? <BookOpen size={14} /> : <Plus size={14} />}
             {signedIn ? "Dashboard" : "Start free"}
           </Link>
+          <AccountMenu user={user} variant="light" />
         </div>
       </div>
     </nav>

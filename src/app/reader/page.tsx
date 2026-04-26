@@ -32,6 +32,8 @@ import { sampleBook, type Book, type Chapter } from "@/lib/sampleData";
 import { getExtraExampleBookById } from "@/lib/exampleReaderBooks";
 import { stripEmDashes } from "@/lib/agent/sanitize";
 import { cn } from "@/lib/utils";
+import AccountMenu from "@/components/AccountMenu";
+import { useAuthUser } from "@/hooks/useAuthUser";
 
 // ─── Types ───────────────────────────────────────────────────
 interface Page {
@@ -714,6 +716,18 @@ function BookReader({
   const canGoForward = spreadRight < pages.length;
   const canGoBack = spreadLeft > 0;
 
+  const navIdle = flipState === "idle";
+  const canUseBack = canGoBack && navIdle;
+  const canUseForward = canGoForward && navIdle;
+
+  const bookSpreadNavButtonClass = (enabled: boolean) =>
+    cn(
+      "pointer-events-auto z-[35] flex h-[52px] w-[52px] sm:h-14 sm:w-14 items-center justify-center rounded-full border-2 shadow-xl transition duration-200",
+      enabled
+        ? "cursor-pointer border-ink-500/20 bg-parchment-50 text-ink-800 shadow-black/50 ring-2 ring-white/95 hover:bg-white hover:ring-ember-200/40 hover:scale-[1.04] active:scale-[0.98]"
+        : "cursor-not-allowed border-ink-400/20 bg-ink-600/40 text-parchment-200/60 opacity-75"
+    );
+
   const goForward = useCallback(() => {
     if (!canGoForward || flipState !== "idle") return;
     const next = spreadLeft + 2;
@@ -766,7 +780,13 @@ function BookReader({
   const nextRightPage = pages[pendingSpread + 1];
 
   return (
-    <div onWheel={handleWheel} className="flex flex-col h-full bg-ink-500 items-center justify-center overflow-hidden select-none">
+    <div
+      onWheel={handleWheel}
+      className={cn(
+        "flex h-full select-none flex-col items-center justify-center bg-ink-500",
+        immersive ? "overflow-hidden" : "overflow-y-hidden overflow-x-visible"
+      )}
+    >
       {/* Ambient light */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/2 left-1/2 h-[420px] w-[720px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-parchment-100/5 blur-[64px]" />
@@ -776,30 +796,28 @@ function BookReader({
       {immersive && (
         <>
           <button
+            type="button"
             onClick={goBack}
-            disabled={!canGoBack || flipState !== "idle"}
+            disabled={!canUseBack}
             aria-label="Previous pages"
             className={cn(
-              "fixed left-5 top-1/2 z-40 -translate-y-1/2 cursor-pointer rounded-full p-3 transition-all duration-200 hover:scale-105 active:scale-95",
-              canGoBack
-                ? "bg-white/15 hover:bg-white/25 border border-white/20 text-parchment-100"
-                : "opacity-25 cursor-not-allowed bg-white/8 border border-white/12 text-parchment-400"
+              "fixed left-3 top-1/2 z-[40] -translate-y-1/2 sm:left-5",
+              bookSpreadNavButtonClass(canUseBack)
             )}
           >
-            <ChevronLeft size={22} />
+            <ChevronLeft size={30} strokeWidth={2.75} className="drop-shadow" />
           </button>
           <button
+            type="button"
             onClick={goForward}
-            disabled={!canGoForward || flipState !== "idle"}
+            disabled={!canUseForward}
             aria-label="Next pages"
             className={cn(
-              "fixed right-5 top-1/2 z-40 -translate-y-1/2 cursor-pointer rounded-full p-3 transition-all duration-200 hover:scale-105 active:scale-95",
-              canGoForward
-                ? "bg-white/15 hover:bg-white/25 border border-white/20 text-parchment-100"
-                : "opacity-25 cursor-not-allowed bg-white/8 border border-white/12 text-parchment-400"
+              "fixed right-3 top-1/2 z-[40] -translate-y-1/2 sm:right-5",
+              bookSpreadNavButtonClass(canUseForward)
             )}
           >
-            <ChevronRight size={22} />
+            <ChevronRight size={30} strokeWidth={2.75} className="drop-shadow" />
           </button>
         </>
       )}
@@ -947,28 +965,34 @@ function BookReader({
             </div>
           )}
 
-          {/* Page-edge click zones (non-immersive only — immersive uses fixed viewport arrows) */}
-          {!immersive && canGoBack && (
-            <button
-              onClick={goBack}
-              className="absolute left-0 top-0 w-16 h-full z-30 cursor-pointer opacity-0 hover:opacity-100 transition-opacity"
-              aria-label="Previous pages"
-            >
-              <div className="h-full flex items-center justify-start pl-2">
-                <ArrowLeft size={16} className="text-ink-400" />
-              </div>
-            </button>
-          )}
-          {!immersive && canGoForward && (
-            <button
-              onClick={goForward}
-              className="absolute right-0 top-0 w-16 h-full z-30 cursor-pointer opacity-0 hover:opacity-100 transition-opacity"
-              aria-label="Next pages"
-            >
-              <div className="h-full flex items-center justify-end pr-2">
-                <ArrowRight size={16} className="text-ink-400" />
-              </div>
-            </button>
+          {/* Page-edge nav (non-immersive) — full buttons sit in the dark gutter, not on the page */}
+          {!immersive && (
+            <>
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={!canUseBack}
+                aria-label="Previous pages"
+                className={cn(
+                  "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full -ml-2.5",
+                  bookSpreadNavButtonClass(canUseBack)
+                )}
+              >
+                <ChevronLeft size={30} strokeWidth={2.75} className="drop-shadow" />
+              </button>
+              <button
+                type="button"
+                onClick={goForward}
+                disabled={!canUseForward}
+                aria-label="Next pages"
+                className={cn(
+                  "absolute right-0 top-1/2 -translate-y-1/2 translate-x-full mr-2.5",
+                  bookSpreadNavButtonClass(canUseForward)
+                )}
+              >
+                <ChevronRight size={30} strokeWidth={2.75} className="drop-shadow" />
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1450,6 +1474,7 @@ function ReaderToolbar({
 }) {
   const isBook = mode === "book";
   const tapClass = TAP_CLASS;
+  const { user: accountUser } = useAuthUser();
 
   return (
     <header className={cn("relative z-40 flex h-[76px] flex-shrink-0 items-center border-b px-3 backdrop-blur-xl sm:px-5", isBook ? "border-white/10 bg-ink-500/92 text-parchment-100" : "border-parchment-200/80 bg-parchment-50/88 text-ink-500")}>
@@ -1556,6 +1581,8 @@ function ReaderToolbar({
         <button onClick={onExport} className={cn("inline-flex h-11 w-11 items-center justify-center rounded-2xl", tapClass, isBook ? "text-parchment-300 hover:bg-white/10" : "text-ink-300 hover:bg-parchment-200/70")} aria-label="Export book">
           <Download size={19} />
         </button>
+
+        <AccountMenu user={accountUser} variant={isBook ? "dark" : "light"} />
       </div>
 
       <div className="absolute inset-x-0 bottom-0 h-0.5 bg-transparent">
@@ -1627,6 +1654,7 @@ function ImmersiveReaderControls({
   setSettings: Dispatch<SetStateAction<ReaderSettings>>;
 }) {
   const isBook = mode === "book";
+  const { user: accountUser } = useAuthUser();
   const [showSettings, setShowSettings] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [hovering, setHovering] = useState(false);
@@ -1804,6 +1832,8 @@ function ImmersiveReaderControls({
           <Minimize2 size={16} />
           <span className="ml-2 hidden sm:inline">Exit</span>
         </button>
+
+        <AccountMenu user={accountUser} variant={isBook ? "dark" : "light"} />
 
         <div className="absolute inset-x-6 bottom-0 h-0.5 overflow-hidden rounded-full bg-white/10">
           <motion.div className="h-full bg-ember-500" animate={{ width: `${progress}%` }} transition={{ duration: 0.3 }} />
@@ -2286,7 +2316,13 @@ function ReaderInner() {
             )}
           </AnimatePresence>
 
-          <div className="min-w-0 flex-1 overflow-hidden">
+          <div
+            className={cn(
+              "min-w-0 flex-1",
+              /* Book mode nav buttons sit in the margin; overflow-x hidden would clip them */
+              mode === "book" ? "overflow-x-visible overflow-y-hidden" : "overflow-hidden"
+            )}
+          >
           <AnimatePresence mode="wait">
             {mode === "kindle" ? (
               <motion.div
