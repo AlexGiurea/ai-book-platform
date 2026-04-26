@@ -6,15 +6,17 @@ interface BrandLogoProps {
   className?: string;
   markClassName?: string;
   textClassName?: string;
+  href?: string;
 }
 
 export default function BrandLogo({
   className,
   markClassName,
   textClassName,
+  href = "/",
 }: BrandLogoProps) {
   return (
-    <Link href="/" className={cn("group flex items-center gap-2", className)}>
+    <Link href={href} className={cn("group flex items-center gap-2", className)}>
       <span
         className={cn(
           "relative flex h-8 w-8 items-center justify-center rounded-xl text-ember-600 transition-transform duration-200 group-hover:-rotate-6 group-hover:scale-105",

@@ -112,7 +112,13 @@ const manuscripts = [
 const ROMAN = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii"];
 
 // ── Feather-pen CTA: pen writes the text in, then rests to the left, floating
-function FeatherPenCTA() {
+function FeatherPenCTA({
+  href = "/signup",
+  label = "Start creating - it's free",
+}: {
+  href?: string;
+  label?: string;
+}) {
   const WRITE_MS = 1900;
   const [phase, setPhase] = useState<"writing" | "resting">("writing");
 
@@ -123,7 +129,7 @@ function FeatherPenCTA() {
 
   return (
     <Link
-      href="/signup"
+      href={href}
       className="group relative flex items-center justify-center px-7 py-3.5 bg-ember-500 hover:bg-ember-600 text-white text-base font-medium rounded-xl transition-all duration-200 shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5 overflow-visible"
     >
       {/* Feather pen */}
@@ -201,7 +207,7 @@ function FeatherPenCTA() {
       )}
 
       <span className="inline-block whitespace-nowrap">
-        Start creating - it&apos;s free
+        {label}
       </span>
     </Link>
   );
@@ -833,6 +839,23 @@ function PricingPreview() {
 }
 
 export default function LandingPage() {
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data: { user?: unknown }) => {
+        if (!cancelled) setSignedIn(Boolean(data.user));
+      })
+      .catch(() => {
+        if (!cancelled) setSignedIn(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-parchment-100 overflow-hidden">
       {/* Background orbs */}
@@ -861,17 +884,19 @@ export default function LandingPage() {
           ))}
         </div>
         <div className="flex items-center gap-3">
+          {!signedIn && (
+            <Link
+              href="/signin"
+              className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
+            >
+              Sign in
+            </Link>
+          )}
           <Link
-            href="/signin"
-            className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
-          >
-            Sign in
-          </Link>
-          <Link
-            href="/signup"
+            href={signedIn ? "/dashboard" : "/signup"}
             className="flex items-center gap-1.5 px-4 py-2 bg-ink-500 hover:bg-ink-400 text-parchment-50 text-sm font-medium rounded-lg transition-all duration-150 shadow-warm-sm hover:shadow-warm"
           >
-            Start free
+            {signedIn ? "Dashboard" : "Start free"}
             <ArrowRight size={13} />
           </Link>
         </div>
@@ -922,7 +947,10 @@ export default function LandingPage() {
           custom={0.3}
           variants={fadeUp}
         >
-          <FeatherPenCTA />
+          <FeatherPenCTA
+            href={signedIn ? "/dashboard" : "/signup"}
+            label={signedIn ? "Return to dashboard" : "Start creating - it's free"}
+          />
           <Link
             href="/reader"
             className="flex items-center gap-2 px-7 py-3.5 bg-white/70 hover:bg-white/90 text-ink-400 text-base font-medium rounded-xl border border-parchment-300/60 transition-all duration-200 shadow-warm-sm hover:shadow-warm backdrop-blur-sm"
@@ -1007,11 +1035,11 @@ export default function LandingPage() {
             minutes.
           </p>
           <Link
-            href="/signup"
+            href={signedIn ? "/dashboard" : "/signup"}
             className="inline-flex items-center gap-2 px-8 py-4 bg-ember-500 hover:bg-ember-600 text-white text-base font-medium rounded-xl transition-all duration-200 shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5"
           >
             <Feather size={16} />
-            Create your first book
+            {signedIn ? "Return to your dashboard" : "Create your first book"}
           </Link>
         </motion.div>
       </section>
