@@ -590,7 +590,7 @@ export class ContextStore {
   async claimNextJob(): Promise<GenerationJob | undefined> {
     const now = new Date().toISOString();
     if (!this.persistent) {
-      const staleMs = Date.now() - 10 * 60 * 1000;
+      const staleMs = Date.now() - 6 * 60 * 1000;
       const job = Array.from(memory.jobs.values())
         .filter(
           (candidate) =>
@@ -622,18 +622,36 @@ export class ContextStore {
         where (
           status = 'queued' and run_after <= now()
         ) or (
-          status = 'running' and locked_at < now() - interval '10 minutes'
+          status = 'running' and locked_at < now() - interval '6 minutes'
         )
         order by created_at asc
         limit 1
       )
       and (
         status = 'queued'
-        or (status = 'running' and locked_at < now() - interval '10 minutes')
+        or (status = 'running' and locked_at < now() - interval '6 minutes')
       )
       returning *
     `) as JobRow[];
     return rows[0] ? mapJob(rows[0]) : undefined;
+  }
+
+  /** For UI: job queue / lock state while diagnosing stuck planning. */
+  async listGenerationJobsForProject(projectId: string): Promise<GenerationJob[]> {
+    if (!this.persistent) {
+      return Array.from(memory.jobs.values())
+        .filter((j) => j.projectId === projectId)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+        .slice(-8)
+        .reverse();
+    }
+    const rows = (await getSql()`
+      select * from generation_jobs
+      where project_id = ${projectId}
+      order by created_at desc
+      limit 8
+    `) as JobRow[];
+    return rows.map(mapJob);
   }
 
   async completeJob(jobId: string): Promise<void> {
