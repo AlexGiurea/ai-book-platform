@@ -4,7 +4,11 @@ import { getCurrentUser } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 
-export async function GET(
+/**
+ * Stops in-flight generation: cancels the project, fails queued/running jobs,
+ * and aborts the current model request on this server instance when possible.
+ */
+export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -13,23 +17,7 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const { id } = await params;
-  const project = await store.getProjectForUser(id, user.id);
-  if (!project) {
-    return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  }
-  return NextResponse.json(project);
-}
-
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const { id } = await params;
-  const result = await store.deleteProjectForUser(id, user.id);
+  const result = await store.cancelProjectForUser(id, user.id);
   if (!result.ok) {
     if (result.reason === "not_found") {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });

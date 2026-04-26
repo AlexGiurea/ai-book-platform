@@ -19,7 +19,7 @@ export interface Book {
   wordCount: number;
   chapterCount: number;
   createdAt: string;
-  status: "complete" | "draft" | "generating";
+  status: "complete" | "draft" | "generating" | "stopped";
   chapters: Chapter[];
 }
 

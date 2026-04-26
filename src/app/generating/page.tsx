@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  Activity,
+  AlertTriangle,
   BookOpen,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock3,
   Feather,
   Globe,
   ImageIcon,
@@ -36,7 +39,16 @@ const particles = Array.from({ length: 18 }, (_, i) => ({
 // ─── Types ────────────────────────────────────────────────────
 interface ProjectState {
   id: string;
-  status: "pending" | "queued" | "planning" | "awaiting_approval" | "writing" | "complete" | "failed";
+  plan: "free" | "pro";
+  status:
+    | "pending"
+    | "queued"
+    | "planning"
+    | "awaiting_approval"
+    | "writing"
+    | "complete"
+    | "failed"
+    | "cancelled";
   bible?: {
     title: string;
     synopsis: string;
@@ -85,6 +97,18 @@ interface ProjectState {
   };
   coverError?: string;
   error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface WorkerRunState {
+  processed: boolean;
+  jobId?: string;
+  projectId?: string;
+  type?: string;
+  status?: "complete" | "failed";
+  error?: string;
+  checkedAt: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -116,7 +140,24 @@ function fmtTime(iso: string): string {
 }
 
 // ─── Observability panel ─────────────────────────────────────
-function ObservabilityPanel({ events, model, totalWords, targetWords, batches, expectedBatches, etaMs }: {
+function ObservabilityPanel({
+  events,
+  model,
+  totalWords,
+  targetWords,
+  batches,
+  expectedBatches,
+  etaMs,
+  projectId,
+  plan,
+  status,
+  coverStatus,
+  updatedAt,
+  elapsedMs,
+  idleMs,
+  lastWorkerRun,
+  isStalled,
+}: {
   events: BatchEvent[];
   model?: string;
   totalWords: number;
@@ -124,6 +165,15 @@ function ObservabilityPanel({ events, model, totalWords, targetWords, batches, e
   batches: ProjectState["batches"];
   expectedBatches: number;
   etaMs: number | null;
+  projectId?: string;
+  plan?: string;
+  status?: ProjectState["status"];
+  coverStatus?: ProjectState["coverStatus"];
+  updatedAt?: string;
+  elapsedMs?: number;
+  idleMs?: number;
+  lastWorkerRun?: WorkerRunState | null;
+  isStalled?: boolean;
 }) {
   const [devOpen, setDevOpen] = useState(false);
   const [expandedBatch, setExpandedBatch] = useState<number | null>(null);
@@ -144,6 +194,17 @@ function ObservabilityPanel({ events, model, totalWords, targetWords, batches, e
     : null;
   const totalPages = wordsToPages(totalWords);
   const targetPages = wordsToPages(targetWords);
+  const lastEvent = events[events.length - 1];
+  const lastSignal = lastEvent
+    ? `${lastEvent.type.replace(/_/g, " ")} · ${fmtTime(lastEvent.timestamp)}`
+    : updatedAt
+      ? `project update · ${fmtTime(updatedAt)}`
+      : "waiting";
+  const lastWorkerSummary = lastWorkerRun
+    ? lastWorkerRun.processed
+      ? `${lastWorkerRun.type ?? "job"} ${lastWorkerRun.status ?? "processed"}`
+      : "no queued job"
+    : "not checked yet";
 
   // User-facing log: planning + batch_complete + project-level events
   const userEvents = events.filter(
@@ -160,6 +221,46 @@ function ObservabilityPanel({ events, model, totalWords, targetWords, batches, e
 
   return (
     <div className="mt-8 rounded-2xl overflow-hidden border border-white/8" style={{ background: "rgba(255,255,255,0.04)" }}>
+      {/* Live diagnostics */}
+      <div className="border-b border-white/6 px-4 py-3">
+        <div className="mb-3 flex items-center gap-2">
+          <Activity size={12} className="text-ember-400" />
+          <span className="text-xs font-medium text-parchment-300/80 uppercase tracking-wider">Live run status</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            { label: "Runtime", value: elapsedMs != null ? fmtDuration(elapsedMs) : "—", icon: Clock3 },
+            { label: "Idle", value: idleMs != null ? fmtDuration(idleMs) : "—", icon: Activity },
+            { label: "Model", value: model ?? "detecting…", icon: Sparkles },
+            { label: "Plan", value: plan ? plan.toUpperCase() : "—", icon: BookOpen },
+            { label: "Status", value: status ?? "starting", icon: Layers },
+            { label: "Cover", value: coverStatus ?? "pending", icon: ImageIcon },
+            { label: "Worker", value: lastWorkerSummary, icon: Terminal },
+            { label: "Project", value: projectId ? projectId.slice(0, 8) : "—", icon: Library },
+          ].map(({ label, value, icon: Icon }) => (
+            <div key={label} className="rounded-xl border border-white/6 px-3 py-2" style={{ background: "rgba(0,0,0,0.14)" }}>
+              <div className="mb-1 flex items-center gap-1.5 text-[9px] uppercase tracking-widest text-parchment-500/50">
+                <Icon size={10} />
+                {label}
+              </div>
+              <div className="truncate font-mono text-[11px] text-parchment-200/90">{value}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-col gap-2 rounded-xl border border-white/6 px-3 py-2 text-xs text-parchment-400/80 sm:flex-row sm:items-center sm:justify-between" style={{ background: "rgba(255,255,255,0.025)" }}>
+          <span>Last signal: <span className="text-parchment-200/90">{lastSignal}</span></span>
+          {lastWorkerRun?.error && <span className="text-red-300">Worker error: {lastWorkerRun.error}</span>}
+        </div>
+        {isStalled && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2">
+            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-amber-300" />
+            <p className="text-xs leading-relaxed text-amber-100/90">
+              No fresh generation signal for more than four minutes. Vercel may still be finishing a long planner call, but if this reaches the function timeout it should be restarted.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* User-facing log */}
       <div className="px-4 py-3 border-b border-white/6">
         <div className="flex items-center gap-2 mb-3">
@@ -322,7 +423,7 @@ function ObservabilityPanel({ events, model, totalWords, targetWords, batches, e
         className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-white/5 transition-colors"
       >
         <Terminal size={11} className="text-parchment-500/50" />
-        <span className="text-[11px] text-parchment-500/50 flex-1">Developer trace</span>
+        <span className="text-[11px] text-parchment-500/50 flex-1">Full developer trace</span>
         {devOpen ? <ChevronUp size={11} className="text-parchment-500/40" /> : <ChevronDown size={11} className="text-parchment-500/40" />}
       </button>
 
@@ -339,6 +440,8 @@ function ObservabilityPanel({ events, model, totalWords, targetWords, batches, e
             <div className="grid grid-cols-3 gap-px bg-white/5 border-t border-white/6">
               {[
                 { label: "Model", value: model ?? "—" },
+                { label: "Plan", value: plan ?? "—" },
+                { label: "Status", value: status ?? "—" },
                 { label: "Avg batch", value: avgMs != null ? fmtMs(avgMs) : "—" },
                 { label: "ETA remaining", value: etaMs != null ? fmtDuration(etaMs) : "—" },
                 { label: "Words / target", value: `${totalWords.toLocaleString()} / ${targetWords.toLocaleString()}` },
@@ -574,11 +677,46 @@ export default function GeneratingPage() {
   const [dots, setDots] = useState(".");
   const [approvalBusy, setApprovalBusy] = useState<"approving" | "replanning" | null>(null);
   const [modelName, setModelName] = useState<string | undefined>(undefined);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [lastWorkerRun, setLastWorkerRun] = useState<WorkerRunState | null>(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [halted, setHalted] = useState(false);
   const startedRef = useRef(false);
+  const pageStartedAtRef = useRef(Date.now());
+  const pollStopRef = useRef(false);
 
-  const kickWorker = async () => {
-    await fetch("/api/jobs/run", { method: "POST" }).catch(() => undefined);
-  };
+  const handleStopGeneration = useCallback(async () => {
+    if (!project || cancelBusy) return;
+    setCancelBusy(true);
+    try {
+      const r = await fetch(`/api/project/${project.id}/cancel`, { method: "POST" });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error((d as { error?: string }).error ?? `HTTP ${r.status}`);
+      }
+      pollStopRef.current = true;
+      setHalted(true);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCancelBusy(false);
+    }
+  }, [project, cancelBusy]);
+
+  const kickWorker = useCallback(async () => {
+    try {
+      const response = await fetch("/api/jobs/run", { method: "POST" });
+      const data = (await response.json().catch(() => ({}))) as Omit<WorkerRunState, "checkedAt">;
+      setLastWorkerRun({ ...data, checkedAt: new Date().toISOString() });
+    } catch (err) {
+      setLastWorkerRun({
+        processed: false,
+        status: "failed",
+        error: err instanceof Error ? err.message : String(err),
+        checkedAt: new Date().toISOString(),
+      });
+    }
+  }, []);
 
   const handleApprove = async () => {
     if (!project) return;
@@ -615,7 +753,10 @@ export default function GeneratingPage() {
   };
 
   useEffect(() => {
-    const interval = setInterval(() => setDots((d) => (d.length >= 3 ? "." : d + ".")), 500);
+    const interval = setInterval(() => {
+      setDots((d) => (d.length >= 3 ? "." : d + "."));
+      setNowMs(Date.now());
+    }, 500);
     return () => clearInterval(interval);
   }, []);
 
@@ -662,7 +803,7 @@ export default function GeneratingPage() {
           throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
         }
         const { projectId } = (await res.json()) as { projectId: string };
-        await fetch("/api/jobs/run", { method: "POST" }).catch(() => undefined);
+        await kickWorker();
         pollProject(projectId);
       } catch (err) {
         setErrorMessage(err instanceof Error ? err.message : String(err));
@@ -672,7 +813,7 @@ export default function GeneratingPage() {
     function pollProject(id: string) {
       let stopped = false;
       const tick = async () => {
-        if (stopped) return;
+        if (stopped || pollStopRef.current) return;
         try {
           const r = await fetch(`/api/project/${id}`);
           if (r.ok) {
@@ -683,8 +824,9 @@ export default function GeneratingPage() {
             setProject(p);
             if (p.status === "complete") { stopped = true; setTimeout(() => router.push(`/reader?id=${id}`), 1200); return; }
             if (p.status === "failed") { stopped = true; setErrorMessage(p.error ?? "Generation failed"); return; }
+            if (p.status === "cancelled") { stopped = true; setHalted(true); return; }
             if (p.status !== "awaiting_approval") {
-              fetch("/api/jobs/run", { method: "POST" }).catch(() => undefined);
+              kickWorker();
             }
           }
         } catch { /* retry */ }
@@ -692,7 +834,7 @@ export default function GeneratingPage() {
       };
       tick();
     }
-  }, [router]);
+  }, [kickWorker, router]);
 
   const progressFraction = project ? Math.min(1, project.totalWords / Math.max(1, project.targetWords)) : 0;
 
@@ -710,6 +852,24 @@ export default function GeneratingPage() {
     avgBatchMs != null && expectedBatchesSafe > 0 && project?.status !== "complete"
       ? Math.round(avgBatchMs * remainingBatches)
       : null;
+  const lastSignalIso =
+    project?.events[project.events.length - 1]?.timestamp ??
+    project?.updatedAt ??
+    project?.createdAt;
+  const elapsedMs = project?.createdAt
+    ? Math.max(0, nowMs - new Date(project.createdAt).getTime())
+    : Math.max(0, nowMs - pageStartedAtRef.current);
+  const idleMs = lastSignalIso
+    ? Math.max(0, nowMs - new Date(lastSignalIso).getTime())
+    : elapsedMs;
+  const effectiveModelName =
+    modelName ??
+    project?.events.find((e) => e.model)?.model ??
+    (project?.plan === "pro" ? "gpt-5.5" : undefined);
+  const isStalled =
+    project?.status === "planning" &&
+    idleMs > 4 * 60 * 1000 &&
+    !errorMessage;
 
   // Linear progress: prefer batch-count ratio once writing has begun (more linear than word ratio)
   const batchProgress =
@@ -742,6 +902,16 @@ export default function GeneratingPage() {
   const done = project?.status === "complete";
   const progress = done ? 100 : Math.min(98, Math.round(linearFraction * 100));
 
+  const canStop =
+    !errorMessage &&
+    !halted &&
+    project &&
+    ["pending", "queued", "planning", "awaiting_approval", "writing"].includes(
+      project.status
+    );
+
+  const showHalted = halted || project?.status === "cancelled";
+
   return (
     <div className="min-h-screen bg-ink-500 flex flex-col items-center justify-center relative overflow-hidden">
       {particles.map((p) => (
@@ -767,6 +937,19 @@ export default function GeneratingPage() {
           <span className="font-serif text-xl font-semibold text-parchment-100 tracking-tight">Folio</span>
         </motion.div>
 
+        {canStop && (
+          <div className="mb-6 flex justify-center">
+            <button
+              type="button"
+              onClick={handleStopGeneration}
+              disabled={cancelBusy}
+              className="cursor-pointer rounded-full border border-red-400/35 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-200/90 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {cancelBusy ? "Stopping…" : "Stop generation"}
+            </button>
+          </div>
+        )}
+
         {/* Status heading */}
         <motion.div className="text-center mb-10"
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}>
@@ -780,6 +963,23 @@ export default function GeneratingPage() {
                 <p className="text-parchment-400 text-sm max-w-md mx-auto">{errorMessage}</p>
                 <button onClick={() => router.push("/create")} className="mt-6 px-5 py-2 rounded-full bg-ember-500 text-white text-sm font-medium hover:bg-ember-600 transition">
                   Back to create
+                </button>
+              </motion.div>
+            ) : showHalted ? (
+              <motion.div key="halted" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
+                <div className="w-16 h-16 rounded-full border border-parchment-400/20 bg-parchment-200/5 flex items-center justify-center mx-auto mb-5">
+                  <XIcon size={24} className="text-parchment-300" />
+                </div>
+                <h1 className="font-serif text-3xl font-bold text-parchment-50 mb-2">Generation stopped</h1>
+                <p className="text-parchment-400 text-sm max-w-md mx-auto">
+                  The process was interrupted. Any partial work is still listed in your library.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/dashboard")}
+                  className="mt-6 px-5 py-2 rounded-full border border-parchment-400/25 bg-white/5 text-parchment-100 text-sm font-medium hover:bg-white/10 transition"
+                >
+                  Back to library
                 </button>
               </motion.div>
             ) : awaitingApproval && project?.bible ? (
@@ -830,6 +1030,12 @@ export default function GeneratingPage() {
                                 Chapter {currentChapterNum} — “{currentChapterTitle}”
                               </span>
                             )}
+                            {isStalled && (
+                              <span className="mx-auto mt-3 flex max-w-sm items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-left text-xs leading-relaxed text-amber-100/90">
+                                <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-amber-300" />
+                                No fresh signal for {fmtDuration(idleMs)}. You can wait a little longer, but this may need a restart if Vercel times out.
+                              </span>
+                            )}
                           </>
                         )}
                 </p>
@@ -839,7 +1045,7 @@ export default function GeneratingPage() {
         </motion.div>
 
         {/* Progress bar */}
-        {!errorMessage && !awaitingApproval && (
+        {!errorMessage && !showHalted && !awaitingApproval && (
           <motion.div className="mb-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4, duration: 0.5 }}>
             <div className="h-1 bg-parchment-300/10 rounded-full overflow-hidden">
               <motion.div className="h-full bg-gradient-to-r from-ember-600 to-ember-400 rounded-full"
@@ -853,7 +1059,7 @@ export default function GeneratingPage() {
         )}
 
         {/* Steps */}
-        {!errorMessage && !awaitingApproval && (
+        {!errorMessage && !showHalted && !awaitingApproval && (
           <motion.div className="space-y-2" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.6 }}>
             {steps.map((step, i) => {
               const isCompleted = i < currentStep;
@@ -895,16 +1101,25 @@ export default function GeneratingPage() {
         )}
 
         {/* Observability panel */}
-        {!errorMessage && project && (
+        {!errorMessage && !showHalted && project && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}>
             <ObservabilityPanel
               events={project.events}
-              model={modelName}
+              model={effectiveModelName}
               totalWords={project.totalWords}
               targetWords={project.targetWords}
               batches={project.batches}
               expectedBatches={project.expectedBatches}
               etaMs={etaMs}
+              projectId={project.id}
+              plan={project.plan}
+              status={project.status}
+              coverStatus={project.coverStatus}
+              updatedAt={project.updatedAt}
+              elapsedMs={elapsedMs}
+              idleMs={idleMs}
+              lastWorkerRun={lastWorkerRun}
+              isStalled={isStalled}
             />
           </motion.div>
         )}

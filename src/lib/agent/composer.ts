@@ -1,5 +1,6 @@
 import { store } from "./context-store";
 import { coverAgent } from "./cover-agent";
+import { isGenerationCancelled } from "./generation-errors";
 import { getModelName } from "./openai-client";
 import { plannerAgent } from "./planner-agent";
 import { writerAgent } from "./writer-agent";
@@ -15,13 +16,16 @@ export class BookComposer {
     const project = await store.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
     const model = getModelName(project.plan);
+    await store.assertNotCancelled(projectId);
     await store.appendEvent(projectId, { type: "project_start", model });
     await store.updateStatus(projectId, "planning");
 
     try {
       await plannerAgent.generateBible(projectId);
+      await store.assertNotCancelled(projectId);
       await store.updateStatus(projectId, "awaiting_approval");
     } catch (err) {
+      if (isGenerationCancelled(err)) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       await store.updateStatus(projectId, "failed", msg);
       await store.appendEvent(projectId, { type: "project_failed", error: msg, model });
@@ -36,11 +40,14 @@ export class BookComposer {
     const project = await store.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
     const model = getModelName(project.plan);
+    await store.assertNotCancelled(projectId);
     await store.updateStatus(projectId, "planning");
     try {
       await plannerAgent.generateBible(projectId);
+      await store.assertNotCancelled(projectId);
       await store.updateStatus(projectId, "awaiting_approval");
     } catch (err) {
+      if (isGenerationCancelled(err)) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       await store.updateStatus(projectId, "failed", msg);
       await store.appendEvent(projectId, { type: "project_failed", error: msg, model });
@@ -71,10 +78,12 @@ export class BookComposer {
 
       let openThreads: string | undefined = undefined;
       for (const blueprint of project.bible.batches) {
+        await store.assertNotCancelled(projectId);
         let lastErr: unknown = undefined;
         let wrote = false;
         for (let attempt = 1; attempt <= BATCH_RETRY_ATTEMPTS; attempt++) {
           try {
+            await store.assertNotCancelled(projectId);
             const result = await writerAgent.writeBatch(
               projectId,
               blueprint,
@@ -108,6 +117,7 @@ export class BookComposer {
         model,
       });
     } catch (err) {
+      if (isGenerationCancelled(err)) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       await store.updateStatus(projectId, "failed", msg);
       await store.appendEvent(projectId, { type: "project_failed", error: msg, model });
@@ -121,6 +131,7 @@ export class BookComposer {
     const model = getModelName(project.plan);
     if (!project.bible) throw new Error("Cannot write before a bible exists");
 
+    await store.assertNotCancelled(projectId);
     await store.updateStatus(projectId, "writing");
 
     const blueprint = project.bible.batches[project.batches.length];
@@ -138,10 +149,12 @@ export class BookComposer {
     let wrote = false;
     for (let attempt = 1; attempt <= BATCH_RETRY_ATTEMPTS; attempt++) {
       try {
+        await store.assertNotCancelled(projectId);
         await writerAgent.writeBatch(projectId, blueprint, undefined);
         wrote = true;
         break;
       } catch (err) {
+        if (isGenerationCancelled(err)) throw err;
         lastErr = err;
         const msg = err instanceof Error ? err.message : String(err);
         console.warn(

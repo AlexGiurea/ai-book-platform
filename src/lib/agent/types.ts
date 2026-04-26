@@ -142,7 +142,8 @@ export type BatchEventType =
   | "batch_start"
   | "batch_complete"
   | "project_complete"
-  | "project_failed";
+  | "project_failed"
+  | "project_cancelled";
 
 export interface BatchEvent {
   type: BatchEventType;
@@ -167,7 +168,8 @@ export type ProjectStatus =
   | "awaiting_approval"
   | "writing"
   | "complete"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export interface BookProject {
   id: string;
