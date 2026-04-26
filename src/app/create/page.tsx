@@ -55,12 +55,12 @@ const povOptions = [
 ];
 
 const lengths = [
-  { label: "Dev short", value: "dev",    desc: "~48 pages, ~12k words · quick test" },
-  { label: "Short",     value: "short",  desc: "~96 pages, ~24k words" },
-  { label: "Medium",    value: "medium", desc: "~160 pages, ~40k words" },
-  { label: "Novel",     value: "long",   desc: "~240 pages, ~60k words" },
-  { label: "Epic",      value: "large",  desc: "~480 pages, ~120k words" },
-  { label: "Tome",      value: "tome",   desc: "~750 pages, ~188k words" },
+  { label: "Dev short", value: "dev",    desc: "~90 PDF pages, ~12k words · quick test" },
+  { label: "Short",     value: "short",  desc: "~170 PDF pages, ~24k words" },
+  { label: "Medium",    value: "medium", desc: "~285 PDF pages, ~40k words" },
+  { label: "Novel",     value: "long",   desc: "~425 PDF pages, ~60k words" },
+  { label: "Epic",      value: "large",  desc: "~850 PDF pages, ~120k words" },
+  { label: "Tome",      value: "tome",   desc: "~1,325 PDF pages, ~188k words" },
 ];
 
 const imageStyles = [

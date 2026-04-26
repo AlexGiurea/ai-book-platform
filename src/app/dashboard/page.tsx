@@ -23,11 +23,12 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { dashboardBooks, type Book } from "@/lib/sampleData";
+import { estimatePdfPagesFromChapters, estimatePdfPagesFromWordCount } from "@/lib/page-estimate";
 import { cn } from "@/lib/utils";
 
 const EXAMPLE_BOOK_IDS = new Set(dashboardBooks.map((b) => b.id));
 
-type LibraryBook = Omit<Book, "chapters">;
+type LibraryBook = Omit<Book, "chapters"> & { pdfPageCount?: number };
 
 interface ApiProject {
   id: string;
@@ -41,6 +42,13 @@ interface ApiProject {
     | "failed"
     | "cancelled";
   totalWords: number;
+  batches: Array<{
+    batchNumber: number;
+    chapterNumber?: number;
+    chapterTitle?: string;
+    prose: string;
+    wordCount: number;
+  }>;
   title?: string;
   synopsis?: string;
   createdAt: string;
@@ -101,6 +109,30 @@ function projectStatusToLibraryStatus(status: ApiProject["status"]): LibraryBook
 
 function projectToLibraryBook(project: ApiProject): LibraryBook {
   const palette = paletteForId(project.id);
+  const chapterMap = new Map<number, { title: string; parts: string[] }>();
+  for (const batch of project.batches) {
+    const chapterNumber = batch.chapterNumber ?? batch.batchNumber;
+    const chapter = chapterMap.get(chapterNumber) ?? {
+      title: batch.chapterTitle || `Chapter ${chapterNumber}`,
+      parts: [],
+    };
+    chapter.parts.push(batch.prose);
+    chapterMap.set(chapterNumber, chapter);
+  }
+  const chaptersForEstimate = Array.from(chapterMap.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([, chapter]) => ({
+      title: chapter.title,
+      content: chapter.parts.join("\n\n"),
+    }));
+  const fallbackChapterCount = project.bible?.chapters.length ?? 1;
+  const pdfPageCount = chaptersForEstimate.length
+    ? estimatePdfPagesFromChapters(chaptersForEstimate, { hasCover: Boolean(project.cover?.imageUrl) })
+    : estimatePdfPagesFromWordCount(project.totalWords, {
+        chapterCount: fallbackChapterCount,
+        hasCover: Boolean(project.cover?.imageUrl),
+      });
+
   return {
     id: project.id,
     title: project.title ?? project.bible?.chapters[0]?.title ?? "Untitled Book",
@@ -109,6 +141,7 @@ function projectToLibraryBook(project: ApiProject): LibraryBook {
     synopsis: project.synopsis ?? "A Folio-generated book in progress.",
     wordCount: project.totalWords,
     chapterCount: project.bible?.chapters.length ?? 0,
+    pdfPageCount,
     createdAt: new Date(project.createdAt).toLocaleDateString(),
     status: projectStatusToLibraryStatus(project.status),
     coverImageUrl: project.cover?.imageUrl,
@@ -471,27 +504,18 @@ export default function DashboardPage() {
             >
               <div className="glass-card overflow-hidden rounded-3xl">
                 <div
-                  className="relative min-h-32 px-6 py-5 text-parchment-50"
+                  className="relative overflow-hidden px-6 py-5 text-parchment-50"
                   style={{
                     background: `linear-gradient(135deg, ${previewBook.coverFrom}, ${previewBook.coverVia}, ${previewBook.coverFrom})`,
                   }}
                 >
-                  {previewBook.coverImageUrl && (
-                    <Image
-                      src={previewBook.coverImageUrl}
-                      alt=""
-                      fill
-                      sizes="(max-width: 768px) 100vw, 672px"
-                      className="pointer-events-none object-cover opacity-70"
-                    />
-                  )}
                   <div
                     className="pointer-events-none absolute inset-0 opacity-25"
                     style={{
                       background: `radial-gradient(circle at 78% 20%, ${previewBook.coverAccent}, transparent 58%)`,
                     }}
                   />
-                  <div className="pointer-events-none absolute inset-0 bg-ink-500/35" />
+                  <div className="pointer-events-none absolute inset-0 bg-ink-500/25" />
                   <button
                     type="button"
                     onClick={() => setPreviewBook(null)}
@@ -500,16 +524,36 @@ export default function DashboardPage() {
                   >
                     <X size={16} />
                   </button>
-                  <div className="relative pr-10">
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-parchment-300/75">
-                      Book preview
-                    </p>
-                    <h2 className="font-serif text-3xl font-bold leading-tight">
-                      {previewBook.title}
-                    </h2>
-                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-parchment-200/78">
-                      A non-spoiler look at the premise, tone, and reading scope before opening the full book.
-                    </p>
+                  <div className="relative flex flex-col gap-5 pr-10 sm:flex-row sm:items-end">
+                    <div className="relative mx-auto aspect-[2/3] w-32 flex-shrink-0 overflow-hidden rounded-xl border border-white/15 bg-black/30 shadow-warm sm:mx-0">
+                      {previewBook.coverImageUrl ? (
+                        <Image
+                          src={previewBook.coverImageUrl}
+                          alt={`${previewBook.title} cover`}
+                          fill
+                          sizes="128px"
+                          className="object-contain"
+                        />
+                      ) : (
+                        <div
+                          className="absolute inset-0"
+                          style={{
+                            background: `linear-gradient(160deg, ${previewBook.coverFrom}, ${previewBook.coverVia}, ${previewBook.coverFrom})`,
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-parchment-300/75">
+                        Book preview
+                      </p>
+                      <h2 className="font-serif text-3xl font-bold leading-tight">
+                        {previewBook.title}
+                      </h2>
+                      <p className="mt-2 max-w-xl text-sm leading-relaxed text-parchment-200/78">
+                        A non-spoiler look at the premise, cover, and PDF reading scope before opening the full book.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -521,7 +565,14 @@ export default function DashboardPage() {
                   <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <PreviewStat icon={BookOpen} label="Genre" value={previewBook.genre} />
                     <PreviewStat icon={Hash} label="Chapters" value={String(previewBook.chapterCount)} />
-                    <PreviewStat icon={FileText} label="Pages est." value={`${Math.max(1, Math.round(previewBook.wordCount / 250))}`} />
+                    <PreviewStat
+                      icon={FileText}
+                      label="PDF pages"
+                      value={`${previewBook.pdfPageCount ?? estimatePdfPagesFromWordCount(previewBook.wordCount, {
+                        chapterCount: previewBook.chapterCount,
+                        hasCover: Boolean(previewBook.coverImageUrl),
+                      })}`}
+                    />
                     <PreviewStat icon={Calendar} label="Created" value={previewBook.createdAt} />
                   </div>
 

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import {
   ACTIVE_DEVELOPMENT_PLAN,
+  FORCE_PRO_FOR_BETA,
   FREE_PLAN_MODEL,
   PRO_PLAN_MODEL,
   normalizePlan,
@@ -22,6 +23,8 @@ export function getOpenAIClient(): OpenAI {
 }
 
 export function getModelName(plan: SubscriptionPlan = ACTIVE_DEVELOPMENT_PLAN): string {
+  if (FORCE_PRO_FOR_BETA) return PRO_PLAN_MODEL;
+
   const normalized = normalizePlan(plan);
   if (normalized === "free") {
     return process.env.OPENAI_FREE_MODEL ?? FREE_PLAN_MODEL;
