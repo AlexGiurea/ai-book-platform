@@ -549,14 +549,22 @@ function ObservabilityPanel({
 function BibleReviewPanel({
   bible,
   targetWords,
+  estTotalPages,
   onApprove,
   onReplan,
+  onStop,
+  stopBusy,
+  showStop,
   busy,
 }: {
   bible: NonNullable<ProjectState["bible"]>;
   targetWords: number;
+  estTotalPages: number;
   onApprove: () => void;
   onReplan: () => void;
+  onStop?: () => void;
+  stopBusy?: boolean;
+  showStop?: boolean;
   busy: "approving" | "replanning" | null;
 }) {
   const [tab, setTab] = useState<"overview" | "characters" | "chapters">("overview");
@@ -570,12 +578,32 @@ function BibleReviewPanel({
     >
       {/* Header */}
       <div className="text-center mb-6">
-        <div className="w-14 h-14 rounded-full bg-sky-500/15 border border-sky-400/30 flex items-center justify-center mx-auto mb-4">
-          <Layers size={22} className="text-sky-300" />
+        <div className="relative w-16 h-16 mx-auto mb-4">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full border border-emerald-400/25 bg-gradient-to-b from-emerald-500/15 to-emerald-600/5 shadow-[0_0_24px_-8px_rgba(16,185,129,0.45)]">
+            <Layers size={24} className="text-emerald-200/90" />
+          </div>
+          <div className="absolute -right-0.5 -top-0.5 flex h-6 w-6 items-center justify-center rounded-full border border-emerald-300/30 bg-ink-500/80 shadow-sm">
+            <CheckCircle2 size={13} className="text-emerald-400" aria-hidden />
+          </div>
         </div>
-        <p className="text-[10px] uppercase tracking-widest text-sky-400/80 mb-2">Book blueprint · review & approve</p>
+        <motion.p
+          className="mb-1.5 inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-500/[0.08] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200/95"
+          animate={{ opacity: [0.9, 1, 0.9] }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+          Blueprint ready
+        </motion.p>
+        <p className="mb-2 text-[10px] uppercase tracking-widest text-sky-400/70">Book bible · review & approve</p>
         <h1 className="font-serif text-3xl font-bold text-parchment-50 mb-2 leading-tight">{bible.title}</h1>
         <p className="text-parchment-400 text-sm italic max-w-lg mx-auto">{bible.logline}</p>
+        <p className="mt-3 max-w-md mx-auto text-sm leading-relaxed text-parchment-300/90">
+          Your story map is in place. Review the outline below — when you approve, we&apos;ll start drafting. Everything is on track.
+        </p>
+        <p className="mt-2 text-center text-xs font-mono text-parchment-200/80">
+          ~{estTotalPages.toLocaleString()} pages · {targetWords.toLocaleString()} words
+          <span className="ml-1 text-parchment-500/60">(target)</span>
+        </p>
       </div>
 
       {/* Tabs */}
@@ -621,8 +649,9 @@ function BibleReviewPanel({
                 ))}
               </div>
             </div>
-            <div className="pt-2 border-t border-white/6 grid grid-cols-3 gap-3 text-xs">
+            <div className="pt-2 border-t border-white/6 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <Stat label="Target words" value={targetWords.toLocaleString()} />
+              <Stat label="Est. total pages" value={`~${estTotalPages.toLocaleString()}`} />
               <Stat label="Chapters" value={String(bible.chapters.length)} />
               <Stat label="Batches" value={String(bible.totalBatches)} />
             </div>
@@ -657,6 +686,7 @@ function BibleReviewPanel({
                     <h4 className="font-serif text-sm font-semibold text-parchment-100 leading-tight">{ch.title}</h4>
                     <span className="text-[10px] text-parchment-500/50 font-mono flex-shrink-0">
                       batches {ch.batchStart}–{ch.batchEnd} · ~{(ch.targetWords ?? 0).toLocaleString()}w
+                      {ch.targetWords != null && ch.targetWords > 0 ? ` · ~${wordsToPages(ch.targetWords)} pp.` : ""}
                     </span>
                   </div>
                   <p className="text-[11px] text-parchment-400/80 mt-1 leading-relaxed">{ch.summary}</p>
@@ -687,6 +717,18 @@ function BibleReviewPanel({
       <p className="text-center text-[11px] text-parchment-500/40 mt-3">
         The blueprint is the book&apos;s creative map — approve when it captures what you want to read.
       </p>
+      {showStop && onStop && (
+        <p className="mt-2 text-center text-[10px] text-parchment-500/30">
+          <button
+            type="button"
+            onClick={onStop}
+            disabled={stopBusy}
+            className="cursor-pointer border-b border-transparent text-parchment-500/50 transition hover:border-parchment-500/30 hover:text-parchment-400/70 disabled:cursor-wait disabled:opacity-50"
+          >
+            {stopBusy ? "Stopping…" : "Stop generation (discard)"}
+          </button>
+        </p>
+      )}
     </motion.div>
   );
 }
@@ -886,9 +928,10 @@ export default function GeneratingPage() {
           const r = await fetch(`/api/project/${id}`);
           if (r.ok) {
             const p = (await r.json()) as ProjectState;
-            // capture model from first project_start event
-            const start = p.events.find((e) => e.model);
-            if (start?.model) setModelName((current) => current ?? start.model);
+            // Prefer the latest model-bearing event. A project can start planning
+            // on an older deployment, then write on a newer one after a redeploy.
+            const latestModel = p.events.slice().reverse().find((e) => e.model)?.model;
+            if (latestModel) setModelName(latestModel);
             setProject(p);
             if (p.status === "complete") { stopped = true; setTimeout(() => router.push(`/reader?id=${id}`), 1200); return; }
             if (p.status === "failed") { stopped = true; setErrorMessage(p.error ?? "Generation failed"); return; }
@@ -932,7 +975,7 @@ export default function GeneratingPage() {
     : elapsedMs;
   const effectiveModelName =
     modelName ??
-    project?.events.find((e) => e.model)?.model ??
+    project?.events.slice().reverse().find((e) => e.model)?.model ??
     (project?.plan === "pro" ? "gpt-5.5" : undefined);
   const isStalled =
     project?.status === "planning" &&
@@ -1005,19 +1048,6 @@ export default function GeneratingPage() {
           <span className="font-serif text-xl font-semibold text-parchment-100 tracking-tight">Folio</span>
         </motion.div>
 
-        {canStop && (
-          <div className="mb-6 flex justify-center">
-            <button
-              type="button"
-              onClick={handleStopGeneration}
-              disabled={cancelBusy}
-              className="cursor-pointer rounded-full border border-red-400/35 bg-red-500/10 px-4 py-2 text-xs font-medium text-red-200/90 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {cancelBusy ? "Stopping…" : "Stop generation"}
-            </button>
-          </div>
-        )}
-
         {/* Status heading */}
         <motion.div className="text-center mb-10"
           initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}>
@@ -1055,8 +1085,12 @@ export default function GeneratingPage() {
                 <BibleReviewPanel
                   bible={project.bible}
                   targetWords={project.targetWords}
+                  estTotalPages={wordsToPages(project.targetWords)}
                   onApprove={handleApprove}
                   onReplan={handleReplan}
+                  onStop={handleStopGeneration}
+                  stopBusy={cancelBusy}
+                  showStop={!!canStop}
                   busy={approvalBusy}
                 />
               </motion.div>
@@ -1207,6 +1241,19 @@ export default function GeneratingPage() {
               onCopyDebug={copyDebugBundle}
             />
           </motion.div>
+        )}
+
+        {canStop && !awaitingApproval && (
+          <p className="mb-3 text-center text-[10px] text-parchment-500/30">
+            <button
+              type="button"
+              onClick={handleStopGeneration}
+              disabled={cancelBusy}
+              className="cursor-pointer border-b border-transparent text-parchment-500/45 transition hover:border-parchment-500/35 hover:text-parchment-400/75 disabled:cursor-wait disabled:opacity-50"
+            >
+              {cancelBusy ? "Stopping…" : "Stop generation"}
+            </button>
+          </p>
         )}
 
         <motion.p className="text-center text-xs text-parchment-500/40 mt-8"
