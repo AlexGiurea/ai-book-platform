@@ -14,6 +14,7 @@ import {
   ImageIcon,
   KeyRound,
   Layers,
+  Maximize2,
   Pause,
   PenTool,
   Play,
@@ -350,6 +351,26 @@ function DemoVideoShowcase() {
     }
   };
 
+  const enterFullscreen = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    type FsTarget = HTMLVideoElement & {
+      webkitEnterFullscreen?: () => void;
+      webkitRequestFullscreen?: () => Promise<void> | void;
+      msRequestFullscreen?: () => Promise<void> | void;
+    };
+    const target = v as FsTarget;
+    if (typeof v.requestFullscreen === "function") {
+      void v.requestFullscreen().catch(() => undefined);
+    } else if (target.webkitRequestFullscreen) {
+      void target.webkitRequestFullscreen();
+    } else if (target.webkitEnterFullscreen) {
+      target.webkitEnterFullscreen();
+    } else if (target.msRequestFullscreen) {
+      void target.msRequestFullscreen();
+    }
+  };
+
   const highlights = [
     {
       icon: Wand2,
@@ -474,15 +495,25 @@ function DemoVideoShowcase() {
               >
                 {playing ? <Pause size={14} /> : <Play size={14} />}
               </button>
-              <button
-                type="button"
-                onClick={toggleMute}
-                aria-label={muted ? "Unmute demo" : "Mute demo"}
-                className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-md transition hover:bg-white/25"
-              >
-                {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-                {muted ? "Tap to listen" : "Sound on"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  aria-label={muted ? "Unmute demo" : "Mute demo"}
+                  className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-md transition hover:bg-white/25"
+                >
+                  {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                  {muted ? "Tap to listen" : "Sound on"}
+                </button>
+                <button
+                  type="button"
+                  onClick={enterFullscreen}
+                  aria-label="Open demo fullscreen"
+                  className="pointer-events-auto inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition hover:bg-white/25"
+                >
+                  <Maximize2 size={13} />
+                </button>
+              </div>
             </div>
           </div>
         </div>
