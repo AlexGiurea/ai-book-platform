@@ -722,10 +722,10 @@ function BookReader({
 
   const bookSpreadNavButtonClass = (enabled: boolean) =>
     cn(
-      "pointer-events-auto z-[35] flex h-[52px] w-[52px] sm:h-14 sm:w-14 items-center justify-center rounded-full border-2 shadow-xl transition duration-200",
+      "pointer-events-auto z-[35] flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border shadow-md backdrop-blur-sm transition duration-200",
       enabled
-        ? "cursor-pointer border-ink-500/20 bg-parchment-50 text-ink-800 shadow-black/50 ring-2 ring-white/95 hover:bg-white hover:ring-ember-200/40 hover:scale-[1.04] active:scale-[0.98]"
-        : "cursor-not-allowed border-ink-400/20 bg-ink-600/40 text-parchment-200/60 opacity-75"
+        ? "cursor-pointer border-ink-500/10 bg-white/40 text-ink-700/85 shadow-black/20 opacity-80 hover:opacity-100 hover:bg-white/70 hover:shadow active:scale-[0.98]"
+        : "cursor-not-allowed border-ink-400/15 bg-ink-600/25 text-parchment-200/50 opacity-45"
     );
 
   const goForward = useCallback(() => {
@@ -801,11 +801,11 @@ function BookReader({
             disabled={!canUseBack}
             aria-label="Previous pages"
             className={cn(
-              "fixed left-3 top-1/2 z-[40] -translate-y-1/2 sm:left-5",
+              "fixed left-4 top-1/2 z-[40] -translate-y-1/2 sm:left-6",
               bookSpreadNavButtonClass(canUseBack)
             )}
           >
-            <ChevronLeft size={30} strokeWidth={2.75} className="drop-shadow" />
+            <ChevronLeft size={22} strokeWidth={2.25} className="drop-shadow-sm opacity-90" />
           </button>
           <button
             type="button"
@@ -813,11 +813,11 @@ function BookReader({
             disabled={!canUseForward}
             aria-label="Next pages"
             className={cn(
-              "fixed right-3 top-1/2 z-[40] -translate-y-1/2 sm:right-5",
+              "fixed right-4 top-1/2 z-[40] -translate-y-1/2 sm:right-6",
               bookSpreadNavButtonClass(canUseForward)
             )}
           >
-            <ChevronRight size={30} strokeWidth={2.75} className="drop-shadow" />
+            <ChevronRight size={22} strokeWidth={2.25} className="drop-shadow-sm opacity-90" />
           </button>
         </>
       )}
@@ -974,11 +974,11 @@ function BookReader({
                 disabled={!canUseBack}
                 aria-label="Previous pages"
                 className={cn(
-                  "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full -ml-2.5",
+                  "absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full -ml-8",
                   bookSpreadNavButtonClass(canUseBack)
                 )}
               >
-                <ChevronLeft size={30} strokeWidth={2.75} className="drop-shadow" />
+                <ChevronLeft size={22} strokeWidth={2.25} className="drop-shadow-sm opacity-90" />
               </button>
               <button
                 type="button"
@@ -986,11 +986,11 @@ function BookReader({
                 disabled={!canUseForward}
                 aria-label="Next pages"
                 className={cn(
-                  "absolute right-0 top-1/2 -translate-y-1/2 translate-x-full mr-2.5",
+                  "absolute right-0 top-1/2 -translate-y-1/2 translate-x-full mr-8",
                   bookSpreadNavButtonClass(canUseForward)
                 )}
               >
-                <ChevronRight size={30} strokeWidth={2.75} className="drop-shadow" />
+                <ChevronRight size={22} strokeWidth={2.25} className="drop-shadow-sm opacity-90" />
               </button>
             </>
           )}
