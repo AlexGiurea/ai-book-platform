@@ -135,6 +135,7 @@ export interface BookCover {
 export type BatchEventType =
   | "project_start"
   | "planning_start"
+  | "planning_heartbeat"
   | "planning_complete"
   | "memory_index_start"
   | "memory_index_complete"
@@ -195,6 +196,8 @@ export interface BookProject {
   error?: string;
   createdAt: string;
   updatedAt: string;
+  /** Latest generation_jobs rows for this project (set by GET /api/project/[id] for UI debugging). */
+  generationJobs?: GenerationJob[];
 }
 
 export interface FullContext {

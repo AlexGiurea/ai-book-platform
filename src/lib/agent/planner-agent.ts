@@ -48,6 +48,17 @@ export class PlannerAgent {
 
     await store.assertNotCancelled(projectId);
     const genSignal = store.getGenerationSignal(projectId);
+    // Heartbeat so the client sees progress during long model calls (Vercel /api/jobs/run max 300s).
+    const HEARTBEAT_MS = 30_000;
+    const heartbeat = setInterval(() => {
+      void store
+        .appendEvent(projectId, {
+          type: "planning_heartbeat",
+          model,
+          durationMs: Date.now() - started,
+        })
+        .catch(() => undefined);
+    }, HEARTBEAT_MS);
     let response;
     try {
       response = await client.responses.parse(
@@ -66,6 +77,8 @@ export class PlannerAgent {
       const c = toGenerationCancelled(err);
       if (c) throw c;
       throw err;
+    } finally {
+      clearInterval(heartbeat);
     }
 
     const parsed = response.output_parsed;

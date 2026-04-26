@@ -19,7 +19,10 @@ import {
   Sparkles,
   Terminal,
 } from "lucide-react";
-import type { BatchEvent } from "@/lib/agent/types";
+import type { BatchEvent, GenerationJob } from "@/lib/agent/types";
+
+/** Single canonical production host for this app (Folio on Vercel). */
+const PRODUCTION_APP_URL = "https://ai-book-platform-alex-giureas-projects.vercel.app";
 
 // ─── Steps ────────────────────────────────────────────────────
 const steps = [
@@ -99,6 +102,7 @@ interface ProjectState {
   error?: string;
   createdAt: string;
   updatedAt: string;
+  generationJobs?: GenerationJob[];
 }
 
 interface WorkerRunState {
@@ -157,6 +161,8 @@ function ObservabilityPanel({
   idleMs,
   lastWorkerRun,
   isStalled,
+  generationJobs,
+  onCopyDebug,
 }: {
   events: BatchEvent[];
   model?: string;
@@ -174,6 +180,8 @@ function ObservabilityPanel({
   idleMs?: number;
   lastWorkerRun?: WorkerRunState | null;
   isStalled?: boolean;
+  generationJobs?: GenerationJob[];
+  onCopyDebug?: () => void;
 }) {
   const [devOpen, setDevOpen] = useState(false);
   const [expandedBatch, setExpandedBatch] = useState<number | null>(null);
@@ -206,10 +214,22 @@ function ObservabilityPanel({
       : "no queued job"
     : "not checked yet";
 
-  // User-facing log: planning + batch_complete + project-level events
+  const jobQueueSummary = generationJobs?.length
+    ? generationJobs
+        .map(
+          (j) =>
+            `${j.type}:${j.status}${j.attempts > 1 ? ` (try ${j.attempts})` : ""}${
+              j.lockedAt ? ` · lock ${fmtTime(j.lockedAt)}` : ""
+            }`
+        )
+        .join(" | ")
+    : "—";
+
+  // User-facing log: planning + heartbeats + batch_complete + project-level events
   const userEvents = events.filter(
     (e) =>
       e.type === "planning_start" ||
+      e.type === "planning_heartbeat" ||
       e.type === "planning_complete" ||
       e.type === "cover_start" ||
       e.type === "cover_complete" ||
@@ -236,6 +256,7 @@ function ObservabilityPanel({
             { label: "Status", value: status ?? "starting", icon: Layers },
             { label: "Cover", value: coverStatus ?? "pending", icon: ImageIcon },
             { label: "Worker", value: lastWorkerSummary, icon: Terminal },
+            { label: "Job queue", value: jobQueueSummary, icon: Library },
             { label: "Project", value: projectId ? projectId.slice(0, 8) : "—", icon: Library },
           ].map(({ label, value, icon: Icon }) => (
             <div key={label} className="rounded-xl border border-white/6 px-3 py-2" style={{ background: "rgba(0,0,0,0.14)" }}>
@@ -249,13 +270,27 @@ function ObservabilityPanel({
         </div>
         <div className="mt-3 flex flex-col gap-2 rounded-xl border border-white/6 px-3 py-2 text-xs text-parchment-400/80 sm:flex-row sm:items-center sm:justify-between" style={{ background: "rgba(255,255,255,0.025)" }}>
           <span>Last signal: <span className="text-parchment-200/90">{lastSignal}</span></span>
-          {lastWorkerRun?.error && <span className="text-red-300">Worker error: {lastWorkerRun.error}</span>}
+          <div className="flex flex-wrap items-center gap-2">
+            {lastWorkerRun?.error && <span className="text-red-300">Worker error: {lastWorkerRun.error}</span>}
+            {onCopyDebug && (
+              <button
+                type="button"
+                onClick={onCopyDebug}
+                className="rounded-md border border-white/12 bg-white/5 px-2 py-1 text-[10px] font-medium text-parchment-200/90 hover:bg-white/10"
+              >
+                Copy debug bundle
+              </button>
+            )}
+          </div>
         </div>
         {isStalled && (
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2">
             <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-amber-300" />
             <p className="text-xs leading-relaxed text-amber-100/90">
-              No fresh generation signal for more than four minutes. Vercel may still be finishing a long planner call, but if this reaches the function timeout it should be restarted.
+              No new signals for more than three and a half minutes. Open{" "}
+              <span className="font-mono text-parchment-200/95">/api/jobs/run</span> in Vercel → Logs, or use{" "}
+              <span className="font-mono">Copy debug</span> below. Production functions stop at ~5 minutes; stuck plan jobs
+              re-queue after about six.
             </p>
           </div>
         )}
@@ -281,6 +316,18 @@ function ObservabilityPanel({
                 <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2">
                   <Layers size={12} className="text-sky-400/80" />
                   <span className="text-xs text-parchment-300">Architecting book blueprint…</span>
+                </motion.div>
+              );
+            }
+            if (ev.type === "planning_heartbeat") {
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 pl-1">
+                  <Activity size={12} className="text-sky-300/70" />
+                  <span className="text-[11px] text-parchment-400/90">
+                    Planner still working
+                    {ev.durationMs != null ? ` · ${fmtDuration(ev.durationMs)} since start` : ""}
+                  </span>
+                  <span className="text-[10px] text-parchment-500/40 ml-auto font-mono">{fmtTime(ev.timestamp)}</span>
                 </motion.div>
               );
             }
@@ -685,6 +732,27 @@ export default function GeneratingPage() {
   const pageStartedAtRef = useRef(Date.now());
   const pollStopRef = useRef(false);
 
+  const copyDebugBundle = useCallback(() => {
+    if (!project) return;
+    const bundle = {
+      productionAppUrl: PRODUCTION_APP_URL,
+      projectId: project.id,
+      status: project.status,
+      plan: project.plan,
+      targetWords: project.targetWords,
+      expectedBatches: project.expectedBatches,
+      lastEvents: project.events.slice(-16),
+      generationJobs: project.generationJobs,
+      lastWorkerRun,
+      howToInvestigate: [
+        "Vercel dashboard → this project → Logs (or Runtime → Functions).",
+        "Filter for path /api/jobs/run or search logs for [planner] and [generation-job].",
+        "Production limit is 300s per invocation; a single plan call that exceeds that is killed and the job re-queues after ~6m lock expiry.",
+      ],
+    };
+    void navigator.clipboard.writeText(JSON.stringify(bundle, null, 2));
+  }, [project, lastWorkerRun]);
+
   const handleStopGeneration = useCallback(async () => {
     if (!project || cancelBusy) return;
     setCancelBusy(true);
@@ -868,7 +936,7 @@ export default function GeneratingPage() {
     (project?.plan === "pro" ? "gpt-5.5" : undefined);
   const isStalled =
     project?.status === "planning" &&
-    idleMs > 4 * 60 * 1000 &&
+    idleMs > 3.5 * 60 * 1000 &&
     !errorMessage;
 
   // Linear progress: prefer batch-count ratio once writing has begun (more linear than word ratio)
@@ -1010,6 +1078,21 @@ export default function GeneratingPage() {
                   />
                 </div>
                 <h1 className="font-serif text-3xl font-bold text-parchment-50 mb-2">Writing your book{dots}</h1>
+                {project?.status === "planning" && (
+                  <div className="mx-auto mb-4 max-w-lg rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-3 text-left text-xs leading-relaxed text-parchment-200/90">
+                    <p className="mb-1 font-medium text-sky-200/95">Step 1 can take a few minutes</p>
+                    <p className="text-parchment-400/90">
+                      The blueprint is <strong className="text-parchment-200/90">one large model call</strong>. The UI updates every ~30s
+                      with heartbeats in the log below. If it sits past ~5 minutes with no new lines, the serverless
+                      time limit is the usual cause — use <strong className="text-parchment-200/90">Copy debug bundle</strong> in the
+                      panel and check Vercel function logs for <span className="font-mono text-[10px]">/api/jobs/run</span>.
+                    </p>
+                    <p className="mt-2 text-[10px] text-parchment-500/80">
+                      Test at:{" "}
+                      <span className="font-mono text-parchment-400/90">{PRODUCTION_APP_URL}</span>
+                    </p>
+                  </div>
+                )}
                 <p className="text-parchment-400 text-sm">
                   {!project
                     ? "Preparing your manuscript…"
@@ -1120,6 +1203,8 @@ export default function GeneratingPage() {
               idleMs={idleMs}
               lastWorkerRun={lastWorkerRun}
               isStalled={isStalled}
+              generationJobs={project.generationJobs}
+              onCopyDebug={copyDebugBundle}
             />
           </motion.div>
         )}
