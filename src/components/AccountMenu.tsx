@@ -70,10 +70,6 @@ export default function AccountMenu({
       extra
     );
   const subIcon = v === "dark" ? "text-parchment-400" : "text-ink-400";
-  const soonBadge =
-    v === "dark"
-      ? "bg-white/8 text-parchment-400"
-      : "bg-ink-500/5 text-ink-300";
 
   return (
     <div className="relative" ref={rootRef}>
@@ -127,23 +123,15 @@ export default function AccountMenu({
                   <BookOpen size={16} className={subIcon} />
                   Library
                 </Link>
-                <button type="button" className={itemClass()} onClick={() => setOpen(false)} role="menuitem">
+                <Link href="/settings" className={itemClass()} onClick={() => setOpen(false)} role="menuitem">
                   <Settings size={16} className={subIcon} />
                   Settings
-                  <span
-                    className={cn(
-                      "ml-auto rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                      soonBadge
-                    )}
-                  >
-                    Soon
-                  </span>
-                </button>
+                </Link>
                 <Link href="/pricing" className={itemClass()} onClick={() => setOpen(false)} role="menuitem">
                   <CreditCard size={16} className={subIcon} />
                   Plan &amp; billing
                 </Link>
-                <Link href="/about" className={itemClass()} onClick={() => setOpen(false)} role="menuitem">
+                <Link href="/help" className={itemClass()} onClick={() => setOpen(false)} role="menuitem">
                   <LifeBuoy size={16} className={subIcon} />
                   Help
                 </Link>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import {
   ArrowRight,
@@ -111,7 +111,9 @@ const manuscripts = [
 
 const ROMAN = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii"];
 
-// ── Feather-pen CTA: pen writes the text in, then rests to the left, floating
+// ── Feather-pen CTA: a single smooth sweep from the left edge to the right
+// edge of the button, then settles there with a gentle bob. Pen stays inside
+// its box. Animated with one smooth ease for buttery 60fps motion.
 function FeatherPenCTA({
   href = "/signup",
   label = "Start creating - it's free",
@@ -119,96 +121,184 @@ function FeatherPenCTA({
   href?: string;
   label?: string;
 }) {
-  const WRITE_MS = 1900;
-  const [phase, setPhase] = useState<"writing" | "resting">("writing");
+  const PEN_SIZE = 26;
+  const EDGE_INSET = 10;
+  const WRITE_MS = 1700;
+  type Phase = "idle" | "writing" | "resting";
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [trackWidth, setTrackWidth] = useState(0);
+  const trackRef = useRef<HTMLSpanElement | null>(null);
+
+  const measureTrack = (node: HTMLSpanElement | null) => {
+    trackRef.current = node;
+    if (!node) return;
+    const w = node.offsetWidth - PEN_SIZE;
+    if (w > 0) setTrackWidth(w);
+  };
 
   useEffect(() => {
-    const t = setTimeout(() => setPhase("resting"), WRITE_MS + 150);
-    return () => clearTimeout(t);
+    const onResize = () => {
+      if (trackRef.current) {
+        const w = trackRef.current.offsetWidth - PEN_SIZE;
+        if (w > 0) setTrackWidth(w);
+      }
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (trackWidth <= 0 || startedRef.current) return;
+    startedRef.current = true;
+    const start = setTimeout(() => setPhase("writing"), 60);
+    const rest = setTimeout(() => setPhase("resting"), 60 + WRITE_MS + 80);
+    return () => {
+      clearTimeout(start);
+      clearTimeout(rest);
+    };
+  }, [trackWidth]);
+
+  // 8 ink sparks puffing from the nib during the writing pass — kept inside box
+  const sparks = Array.from({ length: 8 }, (_, i) => ({
+    id: i,
+    at: 0.1 + (i / 8) * 0.85,
+    drift: (i % 2 === 0 ? 1 : -1) * (3 + (i % 3) * 2),
+    delay: 0.06 * i,
+  }));
 
   return (
     <Link
       href={href}
-      className="group relative flex items-center justify-center px-7 py-3.5 bg-ember-500 hover:bg-ember-600 text-white text-base font-medium rounded-xl transition-all duration-200 shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5 overflow-visible"
+      className="group relative flex items-center justify-center overflow-hidden px-7 py-3.5 bg-ember-500 hover:bg-ember-600 text-white text-base font-medium rounded-xl transition-all duration-200 shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5"
     >
-      {/* Feather pen */}
+      {/* Track — measures the inner width of the button so the pen sweeps to the right edge */}
+      <span
+        ref={measureTrack}
+        aria-hidden
+        className="pointer-events-none absolute inset-x-2 inset-y-0"
+      />
+      {/* Soft amber aura under the button */}
       <motion.span
         aria-hidden
-        className="absolute pointer-events-none z-10 origin-bottom-left"
-        initial={{
-          left: 24,
-          top: -4,
-          rotate: -32,
-          opacity: 0,
-          scale: 0.9,
+        className="pointer-events-none absolute -inset-2 rounded-[18px] blur-2xl"
+        style={{
+          background:
+            "radial-gradient(closest-side, rgba(255,200,130,0.45), rgba(201,125,48,0.0))",
         }}
-        animate={
-          phase === "writing"
-            ? {
-                left: [24, 265],
-                top: [-4, -10, -2, -8, -4],
-                rotate: [-32, -28, -34, -28, -30],
-                opacity: [0, 1, 1, 1, 1],
-                scale: 1,
-              }
-            : {
-                left: -26,
-                top: 0,
-                rotate: -18,
-                opacity: 1,
-                scale: 1,
-              }
-        }
-        transition={
-          phase === "writing"
-            ? {
-                duration: WRITE_MS / 1000,
-                ease: "linear",
-                opacity: { duration: 0.35, ease: "easeOut" },
-              }
-            : {
-                left: { duration: 0.75, ease: [0.16, 1, 0.3, 1] },
-                top: { duration: 0.75, ease: [0.16, 1, 0.3, 1] },
-                rotate: { duration: 0.75, ease: [0.16, 1, 0.3, 1] },
-              }
-        }
+        initial={{ opacity: 0 }}
+        animate={{
+          opacity:
+            phase === "writing" ? 0.85 : phase === "resting" ? 0.35 : 0,
+        }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+      />
+
+      {/* Ink trail — drawn under the pen as it sweeps */}
+      <motion.span
+        aria-hidden
+        className="pointer-events-none absolute bottom-2 h-[2px] rounded-full"
+        style={{
+          left: EDGE_INSET + 4,
+          background:
+            "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.85) 30%, rgba(255,255,255,0.85) 75%, rgba(255,255,255,0) 100%)",
+          willChange: "width, opacity",
+        }}
+        initial={{ width: 0, opacity: 0 }}
+        animate={{
+          width: phase === "idle" ? 0 : trackWidth,
+          opacity: phase === "writing" ? 1 : 0,
+        }}
+        transition={{
+          width:
+            phase === "writing"
+              ? { duration: WRITE_MS / 1000, ease: [0.22, 1, 0.36, 1] }
+              : { duration: 0 },
+          opacity:
+            phase === "writing"
+              ? { duration: 0.4, ease: "easeOut" }
+              : { duration: 1.2, ease: "easeOut" },
+        }}
+      />
+
+      {/* Feather pen — single smooth sweep, then bobs at the right edge */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute z-10"
+        style={{
+          left: EDGE_INSET,
+          top: "50%",
+          willChange: "transform, opacity",
+          opacity: phase === "idle" ? 0 : 1,
+          transform:
+            phase === "idle"
+              ? `translate(0px, ${-PEN_SIZE / 2}px) rotate(-28deg)`
+              : phase === "writing"
+              ? `translate(${trackWidth}px, ${-PEN_SIZE / 2}px) rotate(-28deg)`
+              : `translate(${trackWidth}px, ${-PEN_SIZE / 2}px) rotate(-22deg)`,
+          transition:
+            phase === "writing"
+              ? `transform ${WRITE_MS}ms cubic-bezier(0.22, 1, 0.36, 1), opacity 350ms ease-out`
+              : phase === "resting"
+              ? "transform 600ms cubic-bezier(0.16, 1, 0.3, 1)"
+              : "none",
+        }}
       >
+        {/* Gentle bob while resting */}
         <motion.span
-          className="block text-white drop-shadow-[0_3px_6px_rgba(120,53,15,0.55)]"
+          className="block text-white drop-shadow-[0_4px_10px_rgba(120,53,15,0.6)]"
           animate={
             phase === "resting"
-              ? { y: [0, -5, 0], rotate: [0, 4, 0] }
+              ? { y: [0, -3, 0, -2, 0], rotate: [0, 3, -1, 2, 0] }
               : { y: 0, rotate: 0 }
           }
           transition={
             phase === "resting"
-              ? {
-                  duration: 2.6,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }
+              ? { duration: 3.6, repeat: Infinity, ease: "easeInOut" }
               : { duration: 0 }
           }
         >
-          <Feather size={20} strokeWidth={2.1} />
+          <Feather size={PEN_SIZE} strokeWidth={2.05} />
         </motion.span>
-      </motion.span>
 
-      {/* Tiny ink-trail dots under the nib during writing */}
-      {phase === "writing" && (
+        {/* Nib shimmer */}
         <motion.span
           aria-hidden
-          className="absolute left-6 bottom-2 h-[2px] bg-white/50 rounded-full"
-          initial={{ width: 0 }}
-          animate={{ width: 235 }}
-          transition={{ duration: WRITE_MS / 1000, ease: "linear" }}
+          className="absolute -bottom-0.5 -left-0.5 h-1.5 w-1.5 rounded-full bg-white"
+          animate={{
+            opacity: phase === "writing" ? [0.4, 1, 0.4] : 0,
+            scale: phase === "writing" ? [0.6, 1.3, 0.6] : 0.6,
+          }}
+          transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}
         />
-      )}
-
-      <span className="inline-block whitespace-nowrap">
-        {label}
       </span>
+
+      {/* Ink sparks during the writing pass */}
+      {phase === "writing" &&
+        trackWidth > 0 &&
+        sparks.map((s) => (
+          <motion.span
+            key={s.id}
+            aria-hidden
+            className="pointer-events-none absolute bottom-2 h-1 w-1 rounded-full bg-white/85"
+            style={{ left: EDGE_INSET + 4 + s.at * trackWidth }}
+            initial={{ y: 0, opacity: 0, scale: 0.4 }}
+            animate={{
+              y: [0, s.drift, s.drift * 1.5],
+              opacity: [0, 1, 0],
+              scale: [0.4, 1, 0.2],
+            }}
+            transition={{
+              duration: 0.9,
+              delay: s.delay,
+              ease: "easeOut",
+              repeat: Infinity,
+              repeatDelay: 0.5,
+            }}
+          />
+        ))}
+
+      <span className="relative z-0 inline-block whitespace-nowrap">{label}</span>
     </Link>
   );
 }

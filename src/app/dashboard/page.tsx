@@ -496,10 +496,13 @@ export default function DashboardPage() {
               </p>
             </div>
           </div>
-          <button className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-ember-500 hover:bg-ember-600 text-white text-sm font-medium rounded-xl transition-all shadow-ember hover:shadow-ember-lg whitespace-nowrap">
+          <Link
+            href="/pricing?from=dashboard"
+            className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-ember-500 hover:bg-ember-600 text-white text-sm font-medium rounded-xl transition-all shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5 whitespace-nowrap"
+          >
             <Sparkles size={13} />
             Upgrade
-          </button>
+          </Link>
         </motion.div>
       </main>
 
