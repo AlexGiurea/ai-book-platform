@@ -4,6 +4,7 @@ import {
   normalizePlan,
   type SubscriptionPlan,
 } from "@/lib/plans";
+import { GenerationCancelledError } from "./generation-errors";
 import type {
   Batch,
   BatchEvent,
@@ -177,6 +178,9 @@ const memory =
   globalThis.__folioMemoryStore ??
   (globalThis.__folioMemoryStore = new MemoryStore());
 
+/** In-process abort for the currently running OpenAI request for a project (same Node instance). */
+const generationAbortControllers = new Map<string, AbortController>();
+
 export class ContextStore {
   private get persistent(): boolean {
     return hasDatabaseUrl();
@@ -257,6 +261,39 @@ export class ContextStore {
     const project = await this.getProject(id);
     if (!project || project.userId !== userId) return undefined;
     return project;
+  }
+
+  /**
+   * Register an AbortSignal for the active generation job on this server instance.
+   * Call `endGenerationSession` when the job finishes.
+   */
+  beginGenerationSession(projectId: string): AbortSignal {
+    this.endGenerationSession(projectId);
+    const ac = new AbortController();
+    generationAbortControllers.set(projectId, ac);
+    return ac.signal;
+  }
+
+  endGenerationSession(projectId: string): void {
+    generationAbortControllers.delete(projectId);
+  }
+
+  /**
+   * Abort an in-flight provider request for this project (same process only).
+   */
+  signalGenerationAbort(projectId: string): void {
+    generationAbortControllers.get(projectId)?.abort();
+  }
+
+  getGenerationSignal(projectId: string): AbortSignal | undefined {
+    return generationAbortControllers.get(projectId)?.signal;
+  }
+
+  async assertNotCancelled(projectId: string): Promise<void> {
+    const p = await this.getProject(projectId);
+    if (p?.status === "cancelled") {
+      throw new GenerationCancelledError();
+    }
   }
 
   async updateStatus(id: string, status: ProjectStatus, error?: string): Promise<void> {
@@ -823,6 +860,83 @@ export class ContextStore {
           updated_at = ${now}
       where id = ${jobId}
     `;
+  }
+
+  /**
+   * Stop generation: mark project cancelled, fail queued/running jobs, abort in-flight HTTP to the model.
+   */
+  async cancelProjectForUser(
+    projectId: string,
+    userId: string
+  ): Promise<{ ok: true } | { ok: false; reason: "not_found" | "forbidden" }> {
+    const project = await this.getProjectForUser(projectId, userId);
+    if (!project) {
+      const exists = await this.getProject(projectId);
+      if (!exists) return { ok: false, reason: "not_found" };
+      return { ok: false, reason: "forbidden" };
+    }
+    if (
+      project.status === "complete" ||
+      project.status === "failed" ||
+      project.status === "cancelled"
+    ) {
+      return { ok: true };
+    }
+
+    this.signalGenerationAbort(projectId);
+    const now = new Date().toISOString();
+    await this.updateStatus(projectId, "cancelled", "Generation stopped.");
+    if (!this.persistent) {
+      for (const [, job] of memory.jobs) {
+        if (
+          job.projectId === projectId &&
+          (job.status === "queued" || job.status === "running")
+        ) {
+          job.status = "failed";
+          job.error = "Cancelled";
+          job.completedAt = now;
+          job.updatedAt = now;
+        }
+      }
+    } else {
+      await getSql()`
+        update generation_jobs
+        set status = 'failed',
+            error = 'Cancelled',
+            completed_at = ${now},
+            updated_at = ${now}
+        where project_id = ${projectId}
+          and status in ('queued', 'running')
+      `;
+    }
+    await this.appendEvent(projectId, { type: "project_cancelled" });
+    return { ok: true };
+  }
+
+  async deleteProjectForUser(
+    projectId: string,
+    userId: string
+  ): Promise<{ ok: true } | { ok: false; reason: "not_found" | "forbidden" }> {
+    const project = await this.getProjectForUser(projectId, userId);
+    if (!project) {
+      const exists = await this.getProject(projectId);
+      if (!exists) return { ok: false, reason: "not_found" };
+      return { ok: false, reason: "forbidden" };
+    }
+
+    this.signalGenerationAbort(projectId);
+    this.endGenerationSession(projectId);
+
+    if (!this.persistent) {
+      memory.projects.delete(projectId);
+      for (const [jid, job] of memory.jobs) {
+        if (job.projectId === projectId) memory.jobs.delete(jid);
+      }
+      return { ok: true };
+    }
+
+    await getSql()`delete from projects where id = ${projectId} and user_id = ${userId}`;
+    return { ok: true };
   }
 
   async failJob(jobId: string, error: string): Promise<void> {

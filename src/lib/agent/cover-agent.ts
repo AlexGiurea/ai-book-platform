@@ -3,6 +3,7 @@ import path from "path";
 import { put } from "@vercel/blob";
 import { getImageModelName, getOpenAIClient } from "./openai-client";
 import { store } from "./context-store";
+import { toGenerationCancelled } from "./generation-errors";
 import type { BookCover, StoryBible } from "./types";
 
 const COVER_SIZE = "1024x1536";
@@ -78,21 +79,26 @@ export class CoverAgent {
     const prompt = buildCoverPrompt(project.bible, project.input.preferences.imageStyle);
     const client = getOpenAIClient();
 
+    await store.assertNotCancelled(projectId);
     await store.updateCoverStatus(projectId, "generating");
     await store.appendEvent(projectId, { type: "cover_start", model });
 
+    const genSignal = store.getGenerationSignal(projectId);
     try {
-      const response = await client.images.generate({
-        model,
-        prompt,
-        n: 1,
-        size: COVER_SIZE,
-        quality: COVER_QUALITY,
-        output_format: COVER_OUTPUT_FORMAT,
-        background: "opaque",
-        moderation: "auto",
-        user: projectId,
-      });
+      const response = await client.images.generate(
+        {
+          model,
+          prompt,
+          n: 1,
+          size: COVER_SIZE,
+          quality: COVER_QUALITY,
+          output_format: COVER_OUTPUT_FORMAT,
+          background: "opaque",
+          moderation: "auto",
+          user: projectId,
+        },
+        genSignal ? { signal: genSignal } : undefined
+      );
 
       const image = response.data?.[0];
       if (!image?.b64_json) {
@@ -139,6 +145,8 @@ export class CoverAgent {
 
       return { cover };
     } catch (err) {
+      const c = toGenerationCancelled(err);
+      if (c) throw c;
       const msg = err instanceof Error ? err.message : String(err);
       await store.updateCoverStatus(projectId, "failed", msg);
       await store.appendEvent(projectId, { type: "cover_failed", error: msg, model });

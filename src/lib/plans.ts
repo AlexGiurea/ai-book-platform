@@ -31,6 +31,7 @@ export const PRO_PLAN_MODEL = "gpt-5.5";
 // while preserving the Free/Pro boundary in code for the payment rollout.
 export const ACTIVE_DEVELOPMENT_PLAN: SubscriptionPlan = "pro";
 export const DEFAULT_SIGNUP_PLAN: SubscriptionPlan = ACTIVE_DEVELOPMENT_PLAN;
+export const FORCE_PRO_FOR_BETA = true;
 
 export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
   free: {
@@ -97,6 +98,7 @@ export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
 export const PLAN_ORDER: SubscriptionPlan[] = ["free", "pro"];
 
 export function normalizePlan(value: unknown): SubscriptionPlan {
+  if (FORCE_PRO_FOR_BETA) return ACTIVE_DEVELOPMENT_PLAN;
   return value === "free" || value === "pro" ? value : ACTIVE_DEVELOPMENT_PLAN;
 }
 

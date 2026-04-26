@@ -1,6 +1,7 @@
 import { zodTextFormat } from "openai/helpers/zod";
 import { getModelName, getOpenAIClient } from "./openai-client";
 import { store, TARGET_BATCHES_PER_CHAPTER, WORDS_PER_BATCH } from "./context-store";
+import { toGenerationCancelled } from "./generation-errors";
 import { StoryBibleSchema } from "./schemas";
 import { buildPlannerSystemPrompt, buildPlannerUserPrompt } from "./prompts";
 import { indexProjectMemory } from "./memory-index";
@@ -27,6 +28,14 @@ export class PlannerAgent {
 
     await store.appendEvent(projectId, { type: "planning_start", model });
     const started = Date.now();
+    console.info("[planner] start", {
+      projectId,
+      model,
+      plan: project.plan,
+      targetWords,
+      totalBatches,
+      targetChapters,
+    });
 
     const instructions = buildPlannerSystemPrompt();
     const input = buildPlannerUserPrompt({
@@ -37,18 +46,35 @@ export class PlannerAgent {
       wordsPerBatch: WORDS_PER_BATCH,
     });
 
-    const response = await client.responses.parse({
-      model,
-      instructions,
-      input,
-      max_output_tokens: PLANNER_MAX_OUTPUT_TOKENS,
-      text: {
-        format: zodTextFormat(StoryBibleSchema, "story_bible"),
-      },
-    });
+    await store.assertNotCancelled(projectId);
+    const genSignal = store.getGenerationSignal(projectId);
+    let response;
+    try {
+      response = await client.responses.parse(
+        {
+          model,
+          instructions,
+          input,
+          max_output_tokens: PLANNER_MAX_OUTPUT_TOKENS,
+          text: {
+            format: zodTextFormat(StoryBibleSchema, "story_bible"),
+          },
+        },
+        genSignal ? { signal: genSignal } : undefined
+      );
+    } catch (err) {
+      const c = toGenerationCancelled(err);
+      if (c) throw c;
+      throw err;
+    }
 
     const parsed = response.output_parsed;
     if (!parsed) {
+      console.error("[planner] no parsed output", {
+        projectId,
+        model,
+        elapsedMs: Date.now() - started,
+      });
       throw new Error("Planner returned no parsed bible (possibly truncated)");
     }
 
@@ -174,6 +200,14 @@ export class PlannerAgent {
       totalBatches: bible.totalBatches,
       totalChapters: bible.chapters.length,
       bookTitle: bible.title,
+    });
+    console.info("[planner] complete", {
+      projectId,
+      model,
+      elapsedMs: Date.now() - started,
+      totalBatches: bible.totalBatches,
+      totalChapters: bible.chapters.length,
+      title: bible.title,
     });
 
     return bible;

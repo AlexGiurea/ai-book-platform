@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpen,
@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   Plus,
   Sparkles,
+  Trash2,
   Wand2,
   X,
   Zap,
@@ -24,11 +25,21 @@ import Navbar from "@/components/Navbar";
 import { dashboardBooks, type Book } from "@/lib/sampleData";
 import { cn } from "@/lib/utils";
 
+const EXAMPLE_BOOK_IDS = new Set(dashboardBooks.map((b) => b.id));
+
 type LibraryBook = Omit<Book, "chapters">;
 
 interface ApiProject {
   id: string;
-  status: "pending" | "queued" | "planning" | "awaiting_approval" | "writing" | "complete" | "failed";
+  status:
+    | "pending"
+    | "queued"
+    | "planning"
+    | "awaiting_approval"
+    | "writing"
+    | "complete"
+    | "failed"
+    | "cancelled";
   totalWords: number;
   title?: string;
   synopsis?: string;
@@ -57,6 +68,12 @@ const statusMeta: Record<string, { label: string; color: string; bg: string; ico
     bg: "bg-ember-100",
     icon: Zap,
   },
+  stopped: {
+    label: "Stopped",
+    color: "text-dust-600",
+    bg: "bg-dust-100",
+    icon: Clock,
+  },
 };
 
 const coverPalettes = [
@@ -76,7 +93,9 @@ function paletteForId(id: string) {
 
 function projectStatusToLibraryStatus(status: ApiProject["status"]): LibraryBook["status"] {
   if (status === "complete") return "complete";
-  if (status === "writing" || status === "planning" || status === "pending" || status === "queued") return "generating";
+  if (status === "cancelled") return "stopped";
+  if (status === "writing" || status === "planning" || status === "pending" || status === "queued")
+    return "generating";
   return "draft";
 }
 
@@ -100,6 +119,8 @@ function projectToLibraryBook(project: ApiProject): LibraryBook {
 export default function DashboardPage() {
   const [liveBooks, setLiveBooks] = useState<LibraryBook[]>([]);
   const [previewBook, setPreviewBook] = useState<LibraryBook | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,10 +141,47 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const exampleBookIds = new Set(dashboardBooks.map((book) => book.id));
+  useEffect(() => {
+    if (!openMenuId) return;
+    const onDoc = () => setOpenMenuId(null);
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [openMenuId]);
+
+  const deleteLiveBook = useCallback(
+    async (bookId: string) => {
+      if (EXAMPLE_BOOK_IDS.has(bookId)) return;
+      if (
+        !window.confirm(
+          "Remove this book from your library? This cannot be undone."
+        )
+      ) {
+        return;
+      }
+      setOpenMenuId(null);
+      setDeletingId(bookId);
+      try {
+        const r = await fetch(`/api/project/${bookId}`, { method: "DELETE" });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error((d as { error?: string }).error ?? `HTTP ${r.status}`);
+        }
+        setLiveBooks((prev) => prev.filter((b) => b.id !== bookId));
+        setPreviewBook((p) => (p?.id === bookId ? null : p));
+      } catch (e) {
+        window.alert(
+          e instanceof Error ? e.message : "Could not remove this book."
+        );
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    []
+  );
+
   const books = [
     ...dashboardBooks,
-    ...liveBooks.filter((book) => !exampleBookIds.has(book.id)),
+    ...liveBooks.filter((book) => !EXAMPLE_BOOK_IDS.has(book.id)),
   ];
   const libraryStats = [
     { label: "Books created", value: String(books.length), icon: BookOpen },
@@ -271,17 +329,40 @@ export default function DashboardPage() {
                       <h3 className="font-serif font-semibold text-ink-500 text-base leading-tight group-hover:text-ember-700 transition-colors">
                         {book.title}
                       </h3>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                        className="text-ink-200 hover:text-ink-400 p-1 rounded-md hover:bg-parchment-200/60 flex-shrink-0 transition-colors"
-                        aria-label={`More options for ${book.title}`}
-                      >
-                        <MoreHorizontal size={14} />
-                      </button>
+                      <div className="relative flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setOpenMenuId((id) => (id === book.id ? null : book.id));
+                          }}
+                          className="text-ink-200 hover:text-ink-400 p-1 rounded-md hover:bg-parchment-200/60 transition-colors"
+                          aria-expanded={openMenuId === book.id}
+                          aria-haspopup="menu"
+                          aria-label={`More options for ${book.title}`}
+                        >
+                          <MoreHorizontal size={14} />
+                        </button>
+                        {openMenuId === book.id && !EXAMPLE_BOOK_IDS.has(book.id) && (
+                          <div
+                            role="menu"
+                            className="absolute right-0 top-full z-[100] mt-1 min-w-[9.5rem] rounded-xl border border-parchment-200/80 bg-white py-1 shadow-warm"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              disabled={deletingId === book.id}
+                              onClick={() => void deleteLiveBook(book.id)}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-500 hover:bg-parchment-100 disabled:cursor-wait disabled:opacity-50"
+                            >
+                              <Trash2 size={14} className="text-ember-600" />
+                              {deletingId === book.id ? "Removing…" : "Delete from library"}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2 mb-3">
@@ -475,7 +556,7 @@ export default function DashboardPage() {
                     </button>
                     <Link
                       href={
-                        exampleBookIds.has(previewBook.id)
+                        EXAMPLE_BOOK_IDS.has(previewBook.id)
                           ? `/reader?sample=${encodeURIComponent(previewBook.id)}&library=1`
                           : `/reader?id=${previewBook.id}`
                       }

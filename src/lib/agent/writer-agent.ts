@@ -1,6 +1,7 @@
 import { zodTextFormat } from "openai/helpers/zod";
 import { getModelName, getOpenAIClient } from "./openai-client";
 import { store } from "./context-store";
+import { toGenerationCancelled } from "./generation-errors";
 import { BatchOutputSchema } from "./schemas";
 import { buildWriterSystemPrompt, buildWriterUserPrompt } from "./prompts";
 import { indexBatchMemory, retrieveRelevantMemory } from "./memory-index";
@@ -69,15 +70,27 @@ export class WriterAgent {
       targetWords: project.targetWords,
     });
 
+    await store.assertNotCancelled(projectId);
+    const genSignal = store.getGenerationSignal(projectId);
     const started = Date.now();
-    const response = await client.responses.parse({
-      model,
-      instructions,
-      input,
-      text: {
-        format: zodTextFormat(BatchOutputSchema, "batch_output"),
-      },
-    });
+    let response;
+    try {
+      response = await client.responses.parse(
+        {
+          model,
+          instructions,
+          input,
+          text: {
+            format: zodTextFormat(BatchOutputSchema, "batch_output"),
+          },
+        },
+        genSignal ? { signal: genSignal } : undefined
+      );
+    } catch (err) {
+      const c = toGenerationCancelled(err);
+      if (c) throw c;
+      throw err;
+    }
     const durationMs = Date.now() - started;
 
     const parsed = response.output_parsed;
