@@ -1,7 +1,6 @@
 "use client";
 
 import { Suspense, useState, useEffect, useRef, useMemo, useCallback, type Dispatch, type SetStateAction, type WheelEvent } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1156,13 +1155,11 @@ function CoverPageContent({ page, immersive = false }: { page: Page; immersive?:
   return (
     <div className="relative h-full w-full overflow-hidden bg-ink-500 text-parchment-50">
       {page.coverImageUrl ? (
-        <Image
+        <img
           src={page.coverImageUrl}
           alt=""
-          fill
-          sizes="(max-width: 900px) 50vw, 420px"
-          className="object-cover"
-          priority={page.globalIndex === 0}
+          className="absolute inset-0 h-full w-full object-cover"
+          loading={page.globalIndex === 0 ? "eager" : "lazy"}
         />
       ) : (
         <div className="absolute inset-0" style={{ background: gradient }}>

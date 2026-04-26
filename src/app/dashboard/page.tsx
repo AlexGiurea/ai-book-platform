@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -105,6 +104,20 @@ function projectStatusToLibraryStatus(status: ApiProject["status"]): LibraryBook
   if (status === "writing" || status === "planning" || status === "pending" || status === "queued")
     return "generating";
   return "draft";
+}
+
+function shortPreviewText(text: string, maxChars = 360): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxChars) return normalized;
+
+  const clipped = normalized.slice(0, maxChars);
+  const sentenceEnd = Math.max(
+    clipped.lastIndexOf("."),
+    clipped.lastIndexOf("!"),
+    clipped.lastIndexOf("?")
+  );
+  const end = sentenceEnd > maxChars * 0.45 ? sentenceEnd + 1 : clipped.lastIndexOf(" ");
+  return `${clipped.slice(0, Math.max(0, end)).trim()}...`;
 }
 
 function projectToLibraryBook(project: ApiProject): LibraryBook {
@@ -335,7 +348,12 @@ export default function DashboardPage() {
                     }}
                   >
                     {book.coverImageUrl ? (
-                      <Image src={book.coverImageUrl} alt="" fill sizes="96px" className="object-cover" />
+                      <img
+                        src={book.coverImageUrl}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover"
+                        loading="lazy"
+                      />
                     ) : (
                       <>
                         <div
@@ -496,13 +514,13 @@ export default function DashboardPage() {
               onClick={() => setPreviewBook(null)}
             />
             <motion.div
-              className="fixed inset-x-4 top-1/2 z-[90] mx-auto max-w-2xl -translate-y-1/2"
+              className="fixed inset-x-4 top-1/2 z-[90] mx-auto max-h-[calc(100vh-2rem)] max-w-3xl -translate-y-1/2"
               initial={{ opacity: 0, y: 24, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.96 }}
               transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
             >
-              <div className="glass-card overflow-hidden rounded-3xl">
+              <div className="glass-card flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-3xl">
                 <div
                   className="relative overflow-hidden px-6 py-5 text-parchment-50"
                   style={{
@@ -527,12 +545,11 @@ export default function DashboardPage() {
                   <div className="relative flex flex-col gap-5 pr-10 sm:flex-row sm:items-end">
                     <div className="relative mx-auto aspect-[2/3] w-32 flex-shrink-0 overflow-hidden rounded-xl border border-white/15 bg-black/30 shadow-warm sm:mx-0">
                       {previewBook.coverImageUrl ? (
-                        <Image
+                        <img
                           src={previewBook.coverImageUrl}
                           alt={`${previewBook.title} cover`}
-                          fill
-                          sizes="128px"
-                          className="object-contain"
+                          className="h-full w-full object-contain"
+                          loading="eager"
                         />
                       ) : (
                         <div
@@ -557,9 +574,9 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="p-6">
+                <div className="min-h-0 overflow-y-auto p-6 pb-0">
                   <p className="text-sm leading-relaxed text-ink-300">
-                    {previewBook.synopsis}
+                    {shortPreviewText(previewBook.synopsis)}
                   </p>
 
                   <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -597,7 +614,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <div className="sticky bottom-0 -mx-6 mt-6 flex flex-col-reverse gap-3 border-t border-parchment-200/70 bg-parchment-50/95 px-6 py-4 backdrop-blur sm:flex-row sm:justify-end">
                     <button
                       type="button"
                       onClick={() => setPreviewBook(null)}
