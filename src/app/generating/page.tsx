@@ -20,6 +20,7 @@ import {
   Terminal,
 } from "lucide-react";
 import type { BatchEvent, GenerationJob } from "@/lib/agent/types";
+import { estimatePdfPagesFromWordCount } from "@/lib/page-estimate";
 
 /** Single canonical production host for this app (Folio on Vercel). */
 const PRODUCTION_APP_URL = "https://ai-book-platform-alex-giureas-projects.vercel.app";
@@ -116,11 +117,9 @@ interface WorkerRunState {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
-const WORDS_PER_PAGE = 275;
-
 function wordsToPages(w: number): number {
   if (!w || w <= 0) return 0;
-  return Math.max(1, Math.round(w / WORDS_PER_PAGE));
+  return estimatePdfPagesFromWordCount(w, { hasCover: true });
 }
 
 function fmtMs(ms: number): string {
