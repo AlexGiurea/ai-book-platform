@@ -5,10 +5,12 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   BadgeDollarSign,
+  BookOpen,
   Info,
   LogIn,
   LogOut,
   Plus,
+  Home,
   Sparkles,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
@@ -21,6 +23,11 @@ interface NavbarProps {
 export default function Navbar({ variant = "solid" }: NavbarProps) {
   const pathname = usePathname();
   const [signedIn, setSignedIn] = useState(false);
+  const appSection =
+    pathname === "/dashboard" ||
+    pathname === "/create" ||
+    pathname === "/generating" ||
+    pathname.startsWith("/reader");
 
   useEffect(() => {
     let cancelled = false;
@@ -42,11 +49,16 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
     window.location.href = "/";
   }
 
-  const navLinks = [
-    { href: "/product", label: "Product", icon: Sparkles },
-    { href: "/pricing", label: "Pricing", icon: BadgeDollarSign },
-    { href: "/about", label: "About", icon: Info },
-  ];
+  const navLinks = appSection
+    ? [
+        { href: "/dashboard", label: "Library", icon: BookOpen },
+        { href: "/create", label: "New Book", icon: Plus },
+      ]
+    : [
+        { href: "/product", label: "Product", icon: Sparkles },
+        { href: "/pricing", label: "Pricing", icon: BadgeDollarSign },
+        { href: "/about", label: "About", icon: Info },
+      ];
 
   return (
     <nav
@@ -56,7 +68,7 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
       )}
     >
       <div className="relative max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <BrandLogo markClassName="h-7 w-7" />
+        <BrandLogo href={appSection ? "/dashboard" : "/"} markClassName="h-7 w-7" />
 
         {/* Nav links */}
         <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 md:flex">
@@ -79,6 +91,15 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
 
         {/* CTA */}
         <div className="flex items-center gap-2">
+          {appSection && (
+            <Link
+              href="/"
+              className="hidden items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-300 transition-colors hover:bg-parchment-200/60 hover:text-ink-500 sm:flex"
+            >
+              <Home size={14} />
+              Landing page
+            </Link>
+          )}
           {signedIn ? (
             <button
               type="button"
@@ -98,11 +119,11 @@ export default function Navbar({ variant = "solid" }: NavbarProps) {
             </Link>
           )}
           <Link
-            href={signedIn ? "/create" : "/signup"}
+            href={signedIn ? (appSection ? "/dashboard" : "/dashboard") : "/signup"}
             className="flex items-center gap-1.5 px-4 py-2 bg-ink-500 hover:bg-ink-400 text-parchment-50 text-sm font-medium rounded-lg transition-all duration-150 shadow-warm-sm hover:shadow-warm"
           >
-            <Plus size={14} />
-            {signedIn ? "New Book" : "Start free"}
+            {signedIn ? <BookOpen size={14} /> : <Plus size={14} />}
+            {signedIn ? "Dashboard" : "Start free"}
           </Link>
         </div>
       </div>
