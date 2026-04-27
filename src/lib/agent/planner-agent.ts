@@ -10,6 +10,7 @@ import type { BatchBlueprint, StoryBible } from "./types";
 // Upper bound for planner output. Large novel (~43 batches × ~300 tokens each)
 // plus bible overhead comfortably fits in 16k output tokens.
 const PLANNER_MAX_OUTPUT_TOKENS = 16000;
+const PLANNER_TIMEOUT_MS = 230_000;
 
 export class PlannerAgent {
   async generateBible(projectId: string): Promise<StoryBible> {
@@ -47,6 +48,16 @@ export class PlannerAgent {
 
     await store.assertNotCancelled(projectId);
     const genSignal = store.getGenerationSignal(projectId);
+    const timeoutController = new AbortController();
+    let plannerTimedOut = false;
+    const timeout = setTimeout(() => {
+      plannerTimedOut = true;
+      timeoutController.abort();
+    }, PLANNER_TIMEOUT_MS);
+    const requestSignal =
+      genSignal && typeof AbortSignal.any === "function"
+        ? AbortSignal.any([genSignal, timeoutController.signal])
+        : timeoutController.signal;
     // Heartbeat so the client sees progress during long model calls (Vercel /api/jobs/run max 300s).
     const HEARTBEAT_MS = 30_000;
     const heartbeat = setInterval(() => {
@@ -70,13 +81,28 @@ export class PlannerAgent {
             format: zodTextFormat(StoryBibleSchema, "story_bible"),
           },
         },
-        genSignal ? { signal: genSignal } : undefined
+        { signal: requestSignal }
       );
     } catch (err) {
+      if (plannerTimedOut) {
+        const elapsedMs = Date.now() - started;
+        console.warn("[planner] timed out before platform limit", {
+          projectId,
+          model,
+          elapsedMs,
+          timeoutMs: PLANNER_TIMEOUT_MS,
+        });
+        throw new Error(
+          `Planner exceeded ${Math.round(
+            PLANNER_TIMEOUT_MS / 1000
+          )}s before Vercel's runtime limit. Try a shorter book length or use a faster staged blueprint.`
+        );
+      }
       const c = toGenerationCancelled(err);
       if (c) throw c;
       throw err;
     } finally {
+      clearTimeout(timeout);
       clearInterval(heartbeat);
     }
 

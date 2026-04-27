@@ -24,6 +24,7 @@ import { estimatePdfPagesFromWordCount } from "@/lib/page-estimate";
 
 /** Single canonical production host for this app (Folio on Vercel). */
 const PRODUCTION_APP_URL = "https://ai-book-platform-alex-giureas-projects.vercel.app";
+const PLANNER_TIMEOUT_MS = 230_000;
 
 // ─── Steps ────────────────────────────────────────────────────
 const steps = [
@@ -769,8 +770,8 @@ export default function GeneratingPage() {
   const [lastWorkerRun, setLastWorkerRun] = useState<WorkerRunState | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [halted, setHalted] = useState(false);
+  const [pageStartedAt] = useState(() => Date.now());
   const startedRef = useRef(false);
-  const pageStartedAtRef = useRef(Date.now());
   const pollStopRef = useRef(false);
 
   const copyDebugBundle = useCallback(() => {
@@ -962,13 +963,29 @@ export default function GeneratingPage() {
     avgBatchMs != null && expectedBatchesSafe > 0 && project?.status !== "complete"
       ? Math.round(avgBatchMs * remainingBatches)
       : null;
+  const planningStartIso = project?.events.find((e) => e.type === "planning_start")?.timestamp;
+  const latestPlanningHeartbeat = project?.events
+    .slice()
+    .reverse()
+    .find((e) => e.type === "planning_heartbeat");
+  const planningElapsedMs =
+    project?.status === "planning"
+      ? Math.max(
+          latestPlanningHeartbeat?.durationMs ?? 0,
+          planningStartIso ? nowMs - new Date(planningStartIso).getTime() : 0
+        )
+      : 0;
+  const planningProgress =
+    project?.status === "planning"
+      ? Math.min(95, Math.max(6, Math.round((planningElapsedMs / PLANNER_TIMEOUT_MS) * 95)))
+      : 0;
   const lastSignalIso =
     project?.events[project.events.length - 1]?.timestamp ??
     project?.updatedAt ??
     project?.createdAt;
   const elapsedMs = project?.createdAt
     ? Math.max(0, nowMs - new Date(project.createdAt).getTime())
-    : Math.max(0, nowMs - pageStartedAtRef.current);
+    : Math.max(0, nowMs - pageStartedAt);
   const idleMs = lastSignalIso
     ? Math.max(0, nowMs - new Date(lastSignalIso).getTime())
     : elapsedMs;
@@ -1011,6 +1028,7 @@ export default function GeneratingPage() {
 
   const done = project?.status === "complete";
   const progress = done ? 100 : Math.min(98, Math.round(linearFraction * 100));
+  const displayedProgress = project?.status === "planning" ? planningProgress : progress;
 
   const canStop =
     !errorMessage &&
@@ -1115,10 +1133,9 @@ export default function GeneratingPage() {
                   <div className="mx-auto mb-4 max-w-lg rounded-2xl border border-sky-400/20 bg-sky-500/10 px-4 py-3 text-left text-xs leading-relaxed text-parchment-200/90">
                     <p className="mb-1 font-medium text-sky-200/95">Step 1 can take a few minutes</p>
                     <p className="text-parchment-400/90">
-                      The blueprint is <strong className="text-parchment-200/90">one large model call</strong>. The UI updates every ~30s
-                      with heartbeats in the log below. If it sits past ~5 minutes with no new lines, the serverless
-                      time limit is the usual cause — use <strong className="text-parchment-200/90">Copy debug bundle</strong> in the
-                      panel and check Vercel function logs for <span className="font-mono text-[10px]">/api/jobs/run</span>.
+                      The blueprint is <strong className="text-parchment-200/90">one large model call</strong>. The UI now estimates
+                      blueprint progress from live heartbeats, and the server stops the planner before Vercel&apos;s hard timeout
+                      so failed attempts do not keep silently repeating.
                     </p>
                     <p className="mt-2 text-[10px] text-parchment-500/80">
                       Test at:{" "}
@@ -1130,7 +1147,7 @@ export default function GeneratingPage() {
                   {!project
                     ? "Preparing your manuscript…"
                     : project.status === "planning"
-                      ? "Architecting book blueprint — characters, chapters, and scene beats…"
+                      ? `Architecting book blueprint — ${planningProgress}% of the planning window…`
                       : (
                           <>
                             {project.totalWords.toLocaleString()} / {project.targetWords.toLocaleString()} words
@@ -1165,10 +1182,12 @@ export default function GeneratingPage() {
           <motion.div className="mb-8" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4, duration: 0.5 }}>
             <div className="h-1 bg-parchment-300/10 rounded-full overflow-hidden">
               <motion.div className="h-full bg-gradient-to-r from-ember-600 to-ember-400 rounded-full"
-                animate={{ width: `${progress}%` }} transition={{ duration: 0.8, ease: "easeOut" }} />
+                animate={{ width: `${displayedProgress}%` }} transition={{ duration: 0.8, ease: "easeOut" }} />
             </div>
             <div className="flex justify-between mt-2">
-              <span className="text-xs text-parchment-500">{progress}%</span>
+              <span className="text-xs text-parchment-500">
+                {project?.status === "planning" ? `Blueprint ${displayedProgress}%` : `${displayedProgress}%`}
+              </span>
               <span className="text-xs text-parchment-500">Step {Math.min(currentStep + 1, steps.length)} of {steps.length}</span>
             </div>
           </motion.div>
