@@ -1213,9 +1213,9 @@ export default function LandingPage() {
           custom={0.1}
           variants={fadeUp}
         >
-          Turn any idea into
+          Start reading books
           <br />
-          <span className="gradient-text">a beautiful book</span>
+          <span className="gradient-text">created just for you</span>
         </motion.h1>
 
         <motion.p
@@ -1225,9 +1225,10 @@ export default function LandingPage() {
           custom={0.2}
           variants={fadeUp}
         >
-          Write a premise. Upload notes. Paste an outline. Folio&apos;s AI pipeline
-          structures your idea into a full multi-chapter book — complete with
-          illustrations, in a beautiful reading experience.
+          For the first time, your ideas do not have to stay as notes, prompts,
+          or outlines. Folio turns them into polished, multi-chapter books you
+          can actually sit down and read, complete with illustrations and a
+          beautiful private reader.
         </motion.p>
 
         <motion.div
@@ -1239,7 +1240,7 @@ export default function LandingPage() {
         >
           <FeatherPenCTA
             href={signedIn ? "/dashboard" : "/signup"}
-            label={signedIn ? "Return to dashboard" : "Start creating - it's free"}
+            label={signedIn ? "Return to dashboard" : "Create a book to read"}
           />
           <Link
             href="/reader"
