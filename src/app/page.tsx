@@ -1213,9 +1213,9 @@ export default function LandingPage() {
           custom={0.1}
           variants={fadeUp}
         >
-          Start reading books
+          Turn any idea into
           <br />
-          <span className="gradient-text">created just for you</span>
+          <span className="gradient-text">a beautiful book</span>
         </motion.h1>
 
         <motion.p
@@ -1225,10 +1225,9 @@ export default function LandingPage() {
           custom={0.2}
           variants={fadeUp}
         >
-          For the first time, your ideas do not have to stay as notes, prompts,
-          or outlines. Folio turns them into polished, multi-chapter books you
-          can actually sit down and read, complete with illustrations and a
-          beautiful private reader.
+          Write a premise. Upload notes. Paste an outline. Folio&apos;s AI pipeline
+          structures your idea into a full multi-chapter book — complete with
+          illustrations, in a beautiful reading experience.
         </motion.p>
 
         <motion.div
@@ -1240,7 +1239,7 @@ export default function LandingPage() {
         >
           <FeatherPenCTA
             href={signedIn ? "/dashboard" : "/signup"}
-            label={signedIn ? "Return to dashboard" : "Create a book to read"}
+            label={signedIn ? "Return to dashboard" : "Start creating - it's free"}
           />
           <Link
             href="/reader"
@@ -1249,6 +1248,28 @@ export default function LandingPage() {
             <BookOpen size={16} />
             See an example book
           </Link>
+        </motion.div>
+      </section>
+
+      {/* Reading proposition */}
+      <section className="relative z-10 mx-auto max-w-5xl px-8 pb-24">
+        <motion.div
+          className="mx-auto max-w-3xl text-center"
+          initial={{ opacity: 0, y: 22 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-10%" }}
+          transition={{ duration: 0.65, ease: smoothEase }}
+        >
+          <p className="font-serif text-3xl font-bold leading-tight text-ink-500 md:text-5xl">
+            Start reading books
+            <br />
+            <span className="gradient-text">created from your own ideas.</span>
+          </p>
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-ink-300 md:text-lg">
+            For the first time, your notes, prompts, and half-formed concepts
+            can become polished books written for you, ready to open in a
+            private reader and enjoy end to end.
+          </p>
         </motion.div>
       </section>
 
