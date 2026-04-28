@@ -1,7 +1,6 @@
 import OpenAI from "openai";
 import {
-  ACTIVE_DEVELOPMENT_PLAN,
-  FORCE_PRO_FOR_BETA,
+  FALLBACK_PROJECT_PLAN,
   FREE_PLAN_MODEL,
   PRO_PLAN_MODEL,
   normalizePlan,
@@ -18,13 +17,14 @@ export function getOpenAIClient(): OpenAI {
       "OPENAI_API_KEY is not set. Add it to .env.local before generating a book."
     );
   }
-  cached = new OpenAI({ apiKey });
+  // Routes usage to a specific OpenAI dashboard project (OpenAI-Project header). Set OPENAI_PROJECT_ID
+  // to your "AI Book-Writing" project ID (proj_...) or calls attribute to the org default project.
+  const project = process.env.OPENAI_PROJECT_ID ?? null;
+  cached = new OpenAI({ apiKey, project });
   return cached;
 }
 
-export function getModelName(plan: SubscriptionPlan = ACTIVE_DEVELOPMENT_PLAN): string {
-  if (FORCE_PRO_FOR_BETA) return PRO_PLAN_MODEL;
-
+export function getModelName(plan: SubscriptionPlan = FALLBACK_PROJECT_PLAN): string {
   const normalized = normalizePlan(plan);
   if (normalized === "free") {
     return process.env.OPENAI_FREE_MODEL ?? FREE_PLAN_MODEL;

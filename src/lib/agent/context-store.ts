@@ -1,6 +1,6 @@
 import { getSql, hasDatabaseUrl } from "@/lib/db/postgres";
 import {
-  ACTIVE_DEVELOPMENT_PLAN,
+  FALLBACK_PROJECT_PLAN,
   normalizePlan,
   type SubscriptionPlan,
 } from "@/lib/plans";
@@ -185,7 +185,7 @@ export class ContextStore {
   async createProject(
     input: ProjectInput,
     userId?: string,
-    plan: SubscriptionPlan = ACTIVE_DEVELOPMENT_PLAN
+    plan: SubscriptionPlan = FALLBACK_PROJECT_PLAN
   ): Promise<BookProject> {
     const targetWords = LENGTH_TARGET_WORDS[input.preferences.length];
     const expectedBatches = Math.max(1, Math.round(targetWords / WORDS_PER_BATCH));
@@ -587,17 +587,22 @@ export class ContextStore {
     return mapJob(rows[0]);
   }
 
-  async claimNextJob(): Promise<GenerationJob | undefined> {
+  async claimNextJob(userId?: string): Promise<GenerationJob | undefined> {
     const now = new Date().toISOString();
     if (!this.persistent) {
       const staleMs = Date.now() - 6 * 60 * 1000;
       const job = Array.from(memory.jobs.values())
         .filter(
-          (candidate) =>
-            candidate.status === "queued" ||
-            (candidate.status === "running" &&
-              candidate.lockedAt &&
-              new Date(candidate.lockedAt).getTime() < staleMs)
+          (candidate) => {
+            const project = memory.projects.get(candidate.projectId);
+            if (userId && project?.userId !== userId) return false;
+            return (
+              candidate.status === "queued" ||
+              (candidate.status === "running" &&
+                candidate.lockedAt &&
+                new Date(candidate.lockedAt).getTime() < staleMs)
+            );
+          }
         )
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
       if (!job) return undefined;
@@ -610,6 +615,36 @@ export class ContextStore {
     }
 
     const sql = getSql();
+    if (userId) {
+      const rows = (await sql`
+        update generation_jobs
+        set status = 'running',
+            attempts = attempts + 1,
+            locked_at = ${now},
+            started_at = coalesce(started_at, ${now}),
+            updated_at = ${now}
+        where id = (
+          select gj.id from generation_jobs gj
+          where (
+            (gj.status = 'queued' and gj.run_after <= now())
+            or (gj.status = 'running' and gj.locked_at < now() - interval '6 minutes')
+          )
+          and exists (
+            select 1 from projects p
+            where p.id = gj.project_id and p.user_id = ${userId}
+          )
+          order by gj.created_at asc
+          limit 1
+        )
+        and (
+          status = 'queued'
+          or (status = 'running' and locked_at < now() - interval '6 minutes')
+        )
+        returning *
+      `) as JobRow[];
+      return rows[0] ? mapJob(rows[0]) : undefined;
+    }
+
     const rows = (await sql`
       update generation_jobs
       set status = 'running',

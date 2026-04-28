@@ -16,7 +16,8 @@ Vercel deployment: [https://ai-book-platform-34otkfc6w-alex-giureas-projects.ver
 - Batch-based chapter drafting with project status tracking.
 - AI cover generation support.
 - Dashboard and reader views for managing and reading generated projects.
-- Local in-memory project store for fast prototyping.
+- Free and Pro account tiers with plan-aware model selection and export gates.
+- Stripe Billing foundation for Checkout, customer portal, webhooks, and subscription state sync.
 
 ## Tech Stack
 
@@ -26,6 +27,7 @@ Vercel deployment: [https://ai-book-platform-34otkfc6w-alex-giureas-projects.ver
 - Tailwind CSS
 - Framer Motion
 - OpenAI Node SDK
+- Stripe Node SDK
 - Zod
 
 ## Getting Started
@@ -49,6 +51,7 @@ OPENAI_API_KEY=your_openai_api_key
 OPENAI_FREE_MODEL=gpt-5.4-mini
 OPENAI_PRO_MODEL=gpt-5.5
 OPENAI_IMAGE_MODEL=gpt-image-2
+FOLIO_OWNER_EMAILS=you@example.com
 ```
 
 Run the development server:
@@ -75,12 +78,31 @@ npm run test:cover-image
 | Variable | Required | Description |
 | --- | --- | --- |
 | `OPENAI_API_KEY` | Yes | OpenAI API key used by the planning, writing, and image agents. |
+| `OPENAI_PROJECT_ID` | No | OpenAI [project](https://platform.openai.com/settings/organization) ID (starts with `proj_`). If omitted, usage may appear under your organization’s default project. Set this to your AI Book-Writing project so all Folio API calls are attributed there. |
+| `JOB_RUNNER_SECRET` | Recommended for production | Long random bearer token required for unauthenticated cron or external scheduler calls to `/api/jobs/run`. Signed-in browser calls are scoped to the current user’s own queued jobs. |
 | `OPENAI_FREE_MODEL` | No | Free-tier text model. Defaults to `gpt-5.4-mini`. |
 | `OPENAI_PRO_MODEL` | No | Pro-tier text model. Defaults to `gpt-5.5`. |
 | `OPENAI_MODEL` | No | Legacy fallback for the Pro tier when `OPENAI_PRO_MODEL` is not set. |
 | `OPENAI_IMAGE_MODEL` | No | Image model used for cover generation. Defaults to `gpt-image-2`. |
+| `FOLIO_OWNER_EMAILS` | No | Comma-separated email allowlist that receives Pro without Stripe. Use this for owner and beta accounts before billing launches. |
 | `DATABASE_URL` | Yes for persistence | Neon Postgres connection string used for durable projects, batches, events, and jobs. |
 | `BLOB_READ_WRITE_TOKEN` | Yes for persistent covers | Vercel Blob token used to persist generated cover images. |
+| `STRIPE_SECRET_KEY` | No until billing test | Stripe secret key used by Checkout and the customer portal. |
+| `STRIPE_WEBHOOK_SECRET` | No until billing test | Signing secret for `/api/billing/webhook`. |
+| `STRIPE_PRO_PRICE_ID` | No until billing test | Stripe recurring Price ID for the Pro plan. |
+| `NEXT_PUBLIC_APP_URL` | Recommended for billing | Public app URL used for Checkout and Portal redirects. |
+
+## Billing Foundation
+
+Billing is prepared but intentionally not launched. New accounts default to Free unless their email is included in `FOLIO_OWNER_EMAILS`. Pro unlocks longer generation lengths, multiple generated books, and export endpoints.
+
+When ready to test Stripe:
+
+1. Create a recurring Pro Price in Stripe.
+2. Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRO_PRICE_ID`, and `NEXT_PUBLIC_APP_URL`.
+3. Point Stripe webhooks at `/api/billing/webhook`.
+4. Listen for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`.
+5. Run `npm run db:migrate`.
 
 ## Persistent Storage
 

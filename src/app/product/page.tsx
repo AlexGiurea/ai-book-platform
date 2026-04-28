@@ -13,7 +13,6 @@ import {
   Library,
   PenLine,
   Sparkles,
-  Wand2,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
@@ -87,8 +86,7 @@ export default function ProductPage() {
             animate={{ opacity: 1, y: 0 }}
             className="relative z-10"
           >
-            <span className="mb-6 inline-flex items-center gap-2 rounded-full border border-ember-200 bg-ember-100 px-3 py-1 text-xs font-medium text-ember-600">
-              <Wand2 size={12} />
+            <span className="mb-6 inline-flex items-center rounded-full border border-ember-200 bg-ember-100 px-3 py-1 text-xs font-medium text-ember-600">
               Product
             </span>
             <h1 className="font-serif text-5xl font-bold leading-tight text-ink-500 md:text-7xl">

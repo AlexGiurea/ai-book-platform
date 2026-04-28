@@ -43,7 +43,8 @@ async function main() {
   }
 
   const model = process.env.OPENAI_IMAGE_MODEL ?? "gpt-image-2";
-  const client = new OpenAI({ apiKey });
+  const project = process.env.OPENAI_PROJECT_ID ?? null;
+  const client = new OpenAI({ apiKey, project });
 
   console.log(`[cover-test] Generating test cover with ${model}...`);
   const response = await client.images.generate({

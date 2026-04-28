@@ -5,15 +5,31 @@ import {
   setSessionCookie,
   validateSignupInput,
 } from "@/lib/auth/session";
+import {
+  rateLimit,
+  readJsonLimited,
+  rejectCrossOrigin,
+} from "@/lib/security/request";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
+  const limited = rateLimit(request, {
+    key: "auth:signup",
+    limit: 10,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
+  const body = await readJsonLimited(request, 16 * 1024);
+  if ("response" in body) return body.response;
   const parsed = validateSignupInput({
-    name: body?.name,
-    email: body?.email,
-    password: body?.password,
+    name: (body.data as { name?: unknown })?.name,
+    email: (body.data as { email?: unknown })?.email,
+    password: (body.data as { password?: unknown })?.password,
   });
 
   if ("error" in parsed) {

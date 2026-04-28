@@ -125,6 +125,7 @@ async function loadCoverImageBytes(
     return null;
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (!url.hostname.endsWith(".public.blob.vercel-storage.com")) return null;
 
   const response = await fetch(url, {
     redirect: "follow",

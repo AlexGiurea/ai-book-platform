@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { store } from "@/lib/agent";
 import { getCurrentUser } from "@/lib/auth/session";
+import { rejectCrossOrigin } from "@/lib/security/request";
 
 export const runtime = "nodejs";
 
@@ -9,9 +10,12 @@ export const runtime = "nodejs";
  * and aborts the current model request on this server instance when possible.
  */
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

@@ -24,6 +24,8 @@ import {
   Wand2,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
+import AccountMenu from "@/components/AccountMenu";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { PLAN_DEFINITIONS, PLAN_ORDER } from "@/lib/plans";
 import { dashboardBooks } from "@/lib/sampleData";
 
@@ -1129,22 +1131,7 @@ function PricingPreview() {
 }
 
 export default function LandingPage() {
-  const [signedIn, setSignedIn] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data: { user?: unknown }) => {
-        if (!cancelled) setSignedIn(Boolean(data.user));
-      })
-      .catch(() => {
-        if (!cancelled) setSignedIn(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { user, signedIn } = useAuthUser();
 
   return (
     <div className="min-h-screen bg-parchment-100 overflow-hidden">
@@ -1189,6 +1176,7 @@ export default function LandingPage() {
             {signedIn ? "Dashboard" : "Start free"}
             <ArrowRight size={13} />
           </Link>
+          <AccountMenu user={user} variant="light" />
         </div>
       </nav>
 
@@ -1250,7 +1238,6 @@ export default function LandingPage() {
           </Link>
         </motion.div>
       </section>
-
       {/* Reading proposition */}
       <section className="relative z-10 mx-auto max-w-5xl px-8 pb-24">
         <motion.div
@@ -1272,6 +1259,7 @@ export default function LandingPage() {
           </p>
         </motion.div>
       </section>
+
 
       {/* Demo video — Folio in motion */}
       <section className="relative z-10 mx-auto max-w-6xl px-8 pb-28">

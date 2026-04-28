@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
-  BadgeDollarSign,
   CheckCircle2,
   FileText,
   ShieldCheck,
@@ -13,21 +13,51 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { PLAN_DEFINITIONS, PLAN_ORDER } from "@/lib/plans";
+import { useAuthUser } from "@/hooks/useAuthUser";
 
 const plans = PLAN_ORDER.map((id) => PLAN_DEFINITIONS[id]);
 
 export default function PricingPage() {
+  const { signedIn, user } = useAuthUser();
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+
+  async function startProCheckout() {
+    if (!signedIn) {
+      window.location.href = "/signup?plan=pro";
+      return;
+    }
+    setLoadingPlan("pro");
+    try {
+      const response = await fetch("/api/billing/checkout", { method: "POST" });
+      const data = (await response.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.url) {
+        throw new Error(data.error ?? "Could not start billing.");
+      }
+      window.location.href = data.url;
+    } catch (error) {
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Could not start billing."
+      );
+    } finally {
+      setLoadingPlan(null);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-parchment-100">
       <Navbar />
       <main className="mx-auto max-w-7xl px-6 pb-24 pt-28">
         <section className="mx-auto max-w-3xl text-center">
           <motion.span
-            className="mb-6 inline-flex items-center gap-2 rounded-full border border-ember-200 bg-ember-100 px-3 py-1 text-xs font-medium text-ember-600"
+            className="mb-6 inline-flex items-center rounded-full border border-ember-200 bg-ember-100 px-3 py-1 text-xs font-medium text-ember-600"
             initial={false}
             animate={{ opacity: 1, y: 0 }}
           >
-            <BadgeDollarSign size={12} />
             Pricing
           </motion.span>
           <motion.h1
@@ -52,13 +82,14 @@ export default function PricingPage() {
 
         <section className="mt-8 flex justify-center">
           <motion.div
-            className="rounded-full border border-ember-200 bg-ember-100 px-4 py-2 text-sm font-medium text-ember-700 shadow-warm-sm"
+            className="max-w-3xl rounded-2xl border border-ember-200 bg-ember-100 px-4 py-3 text-sm font-medium text-ember-700 shadow-warm-sm"
             initial={false}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.16, duration: 0.5 }}
           >
-            Beta note: billing is off right now, so every account is provisioned
-            on Pro while we build.
+            Stripe Checkout and the customer portal are wired in code, but billing
+            stays off until the Stripe keys and Pro price ID are configured.
+            Owner and beta accounts can still be provisioned on Pro.
           </motion.div>
         </section>
 
@@ -113,17 +144,37 @@ export default function PricingPage() {
                   {plan.bestFor}
                 </p>
               </div>
-              <Link
-                href={plan.href}
-                className={
-                  plan.featured
-                    ? "mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ember-500 px-5 py-3 text-sm font-medium text-white shadow-ember transition hover:bg-ember-600"
-                    : "mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-medium text-ink-500 shadow-warm-sm transition hover:bg-parchment-50"
-                }
-              >
-                {plan.cta}
-                <ArrowRight size={15} />
-              </Link>
+              {plan.id === "pro" ? (
+                <button
+                  type="button"
+                  onClick={startProCheckout}
+                  disabled={loadingPlan === "pro" || user?.plan === "pro"}
+                  className={
+                    plan.featured
+                      ? "mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ember-500 px-5 py-3 text-sm font-medium text-white shadow-ember transition hover:bg-ember-600 disabled:cursor-not-allowed disabled:opacity-70"
+                      : "mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-medium text-ink-500 shadow-warm-sm transition hover:bg-parchment-50 disabled:cursor-not-allowed disabled:opacity-70"
+                  }
+                >
+                  {user?.plan === "pro"
+                    ? "Current plan"
+                    : loadingPlan === "pro"
+                      ? "Opening Checkout..."
+                      : plan.cta}
+                  <ArrowRight size={15} />
+                </button>
+              ) : (
+                <Link
+                  href={plan.href}
+                  className={
+                    plan.featured
+                      ? "mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ember-500 px-5 py-3 text-sm font-medium text-white shadow-ember transition hover:bg-ember-600"
+                      : "mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-medium text-ink-500 shadow-warm-sm transition hover:bg-parchment-50"
+                  }
+                >
+                  {user?.plan === "free" ? "Current plan" : plan.cta}
+                  <ArrowRight size={15} />
+                </Link>
+              )}
               <div className="mt-7 space-y-3">
                 {plan.features.map((feature) => (
                   <div key={feature} className="flex items-start gap-2 text-sm">
@@ -146,7 +197,7 @@ export default function PricingPage() {
             { icon: Sparkles, title: "Plan-aware models", body: "Free is wired for GPT-5.4 mini. Pro is wired for GPT-5.5." },
             { icon: FileText, title: "Publishing path", body: "Pro is where longer books, PDF, EPUB, and cover polish will live." },
             { icon: ShieldCheck, title: "Account-owned", body: "Projects stay tied to your signed-in account and private library." },
-            { icon: Zap, title: "Billing-ready", body: "The code already records plan membership without turning payments on yet." },
+            { icon: Zap, title: "Billing-ready", body: "Checkout, portal, webhooks, and plan sync are prepared without launching payments." },
           ].map(({ icon: Icon, title, body }) => (
             <div key={title} className="rounded-2xl border border-parchment-300/70 bg-white/65 p-5 shadow-warm-sm">
               <Icon size={18} className="mb-4 text-ember-600" />

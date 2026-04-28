@@ -6,6 +6,7 @@ import {
   type ExportFormat,
 } from "@/lib/book-export";
 import { getCurrentUser } from "@/lib/auth/session";
+import { rejectCrossOrigin } from "@/lib/security/request";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -74,6 +75,9 @@ function normalizeBook(input: unknown): ExportBook | undefined {
 }
 
 export async function POST(request: Request) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
   let body: unknown;
   try {
     body = await request.json();

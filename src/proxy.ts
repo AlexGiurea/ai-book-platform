@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 
-const protectedRoutes = ["/create", "/dashboard", "/generating"];
+const protectedRoutes = ["/create", "/dashboard", "/generating", "/settings"];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
+  if (request.headers.has("x-middleware-subrequest")) {
+    return new NextResponse(null, { status: 400 });
+  }
+
   const { pathname } = request.nextUrl;
   const isProtected = protectedRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -20,5 +24,14 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/create/:path*", "/dashboard/:path*", "/generating/:path*"],
+  matcher: [
+    "/create",
+    "/create/:path*",
+    "/dashboard",
+    "/dashboard/:path*",
+    "/generating",
+    "/generating/:path*",
+    "/settings",
+    "/settings/:path*",
+  ],
 };

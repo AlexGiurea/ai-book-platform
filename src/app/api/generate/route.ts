@@ -2,24 +2,36 @@ import { NextResponse } from "next/server";
 import { store } from "@/lib/agent";
 import type { ProjectInput } from "@/lib/agent";
 import { getCurrentUser } from "@/lib/auth/session";
+import { canCreateProject, canUseLength } from "@/lib/plans";
+import {
+  rateLimit,
+  readJsonLimited,
+  rejectCrossOrigin,
+} from "@/lib/security/request";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
+  const crossOrigin = rejectCrossOrigin(request);
+  if (crossOrigin) return crossOrigin;
+
+  const limited = rateLimit(request, {
+    key: "generate:create",
+    limit: 12,
+    windowMs: 60_000,
+  });
+  if (limited) return limited;
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in to create a book." }, { status: 401 });
   }
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
+  const parsed = await readJsonLimited(request, 512 * 1024);
+  if ("response" in parsed) return parsed.response;
 
-  const input = body as Partial<ProjectInput>;
+  const input = parsed.data as Partial<ProjectInput>;
   const canvas = input.canvas;
   const canvasHasContent =
     !!canvas &&
@@ -41,6 +53,21 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: "Missing required field: preferences" },
       { status: 400 }
+    );
+  }
+
+  const existingProjects = await store.listProjectsForUser(user.id);
+  if (!canCreateProject(user.plan, existingProjects.length)) {
+    return NextResponse.json(
+      { error: "Free accounts can keep one generated book. Upgrade to Pro for more projects." },
+      { status: 403 }
+    );
+  }
+
+  if (!canUseLength(user.plan, input.preferences.length ?? "medium")) {
+    return NextResponse.json(
+      { error: "Novel, Epic, and Tome lengths are available on Pro." },
+      { status: 403 }
     );
   }
 

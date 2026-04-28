@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -23,6 +24,7 @@ import {
 import Navbar from "@/components/Navbar";
 import { dashboardBooks, type Book } from "@/lib/sampleData";
 import { estimatePdfPagesFromChapters, estimatePdfPagesFromWordCount } from "@/lib/page-estimate";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { cn } from "@/lib/utils";
 
 const EXAMPLE_BOOK_IDS = new Set(dashboardBooks.map((b) => b.id));
@@ -163,6 +165,7 @@ function projectToLibraryBook(project: ApiProject): LibraryBook {
 }
 
 export default function DashboardPage() {
+  const { user } = useAuthUser();
   const [liveBooks, setLiveBooks] = useState<LibraryBook[]>([]);
   const [previewBook, setPreviewBook] = useState<LibraryBook | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -348,11 +351,12 @@ export default function DashboardPage() {
                     }}
                   >
                     {book.coverImageUrl ? (
-                      <img
+                      <Image
                         src={book.coverImageUrl}
                         alt=""
-                        className="absolute inset-0 h-full w-full object-cover"
-                        loading="lazy"
+                        fill
+                        sizes="96px"
+                        className="object-cover"
                       />
                     ) : (
                       <>
@@ -477,33 +481,62 @@ export default function DashboardPage() {
         </div>
 
         {/* Premium prompt */}
-        <motion.div
-          className="glass-card rounded-2xl p-6 flex items-center justify-between gap-6"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5, duration: 0.5 }}
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl bg-ember-100 border border-ember-200 flex items-center justify-center flex-shrink-0">
-              <Feather size={18} className="text-ember-600" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-ink-500">
-                Unlock the full creative suite
-              </p>
-              <p className="text-xs text-ink-300 mt-0.5">
-                Save projects, export to PDF, generate longer books, and unlock priority generation.
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/pricing?from=dashboard"
-            className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-ember-500 hover:bg-ember-600 text-white text-sm font-medium rounded-xl transition-all shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5 whitespace-nowrap"
+        {user?.plan !== "pro" ? (
+          <motion.div
+            className="glass-card rounded-2xl p-6 flex items-center justify-between gap-6"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.5 }}
           >
-            <Sparkles size={13} />
-            Upgrade
-          </Link>
-        </motion.div>
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-ember-100 border border-ember-200 flex items-center justify-center flex-shrink-0">
+                <Feather size={18} className="text-ember-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-ink-500">
+                  Unlock the full creative suite
+                </p>
+                <p className="text-xs text-ink-300 mt-0.5">
+                  Save more projects, export to PDF and EPUB, generate longer books, and unlock priority generation.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/pricing?from=dashboard"
+              className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-ember-500 hover:bg-ember-600 text-white text-sm font-medium rounded-xl transition-all shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5 whitespace-nowrap"
+            >
+              <Sparkles size={13} />
+              Upgrade
+            </Link>
+          </motion.div>
+        ) : (
+          <motion.div
+            className="glass-card rounded-2xl p-6 flex items-center justify-between gap-6"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5, duration: 0.5 }}
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-sage-100 border border-sage-200 flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 size={18} className="text-sage-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-ink-500">
+                  Pro workspace active
+                </p>
+                <p className="text-xs text-ink-300 mt-0.5">
+                  Longer manuscripts, exports, premium covers, and priority generation are enabled for this account.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/settings"
+              className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-parchment-50 text-ink-500 text-sm font-medium rounded-xl transition-all shadow-warm-sm whitespace-nowrap"
+            >
+              Settings
+            </Link>
+          </motion.div>
+        )}
       </main>
 
       <AnimatePresence>
@@ -548,11 +581,12 @@ export default function DashboardPage() {
                   <div className="relative flex flex-col gap-5 pr-10 sm:flex-row sm:items-end">
                     <div className="relative mx-auto aspect-[2/3] w-32 flex-shrink-0 overflow-hidden rounded-xl border border-white/15 bg-black/30 shadow-warm sm:mx-0">
                       {previewBook.coverImageUrl ? (
-                        <img
+                        <Image
                           src={previewBook.coverImageUrl}
                           alt={`${previewBook.title} cover`}
-                          className="h-full w-full object-contain"
-                          loading="eager"
+                          fill
+                          sizes="128px"
+                          className="object-contain"
                         />
                       ) : (
                         <div

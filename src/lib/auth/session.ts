@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import type { NextResponse } from "next/server";
 import { getSql, hasDatabaseUrl } from "@/lib/db/postgres";
 import { makeId } from "@/lib/agent/context-store";
-import { DEFAULT_SIGNUP_PLAN, normalizePlan, type SubscriptionPlan } from "@/lib/plans";
+import { getInitialPlanForEmail, normalizePlan, type SubscriptionPlan } from "@/lib/plans";
 import { SESSION_COOKIE } from "./constants";
 import { hashPassword, makeSalt, verifyPassword } from "./password";
 
@@ -16,6 +16,13 @@ export interface AuthUser {
   name?: string;
   plan: SubscriptionPlan;
   createdAt: string;
+  billing?: {
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    stripeSubscriptionStatus?: string;
+    stripePriceId?: string;
+    stripeCurrentPeriodEnd?: string;
+  };
 }
 
 type UserRow = {
@@ -23,6 +30,11 @@ type UserRow = {
   email: string;
   name: string | null;
   plan: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  stripe_subscription_status: string | null;
+  stripe_price_id: string | null;
+  stripe_current_period_end: string | Date | null;
   password_hash: string;
   password_salt: string;
   created_at: string | Date;
@@ -33,7 +45,19 @@ function normalizeEmail(email: string): string {
 }
 
 function toUser(
-  row: Pick<UserRow, "id" | "email" | "name" | "plan" | "created_at">
+  row: Pick<
+    UserRow,
+    | "id"
+    | "email"
+    | "name"
+    | "plan"
+    | "created_at"
+    | "stripe_customer_id"
+    | "stripe_subscription_id"
+    | "stripe_subscription_status"
+    | "stripe_price_id"
+    | "stripe_current_period_end"
+  >
 ): AuthUser {
   return {
     id: row.id,
@@ -42,6 +66,17 @@ function toUser(
     plan: normalizePlan(row.plan),
     createdAt:
       row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    billing: {
+      stripeCustomerId: row.stripe_customer_id ?? undefined,
+      stripeSubscriptionId: row.stripe_subscription_id ?? undefined,
+      stripeSubscriptionStatus: row.stripe_subscription_status ?? undefined,
+      stripePriceId: row.stripe_price_id ?? undefined,
+      stripeCurrentPeriodEnd: row.stripe_current_period_end
+        ? row.stripe_current_period_end instanceof Date
+          ? row.stripe_current_period_end.toISOString()
+          : row.stripe_current_period_end
+        : undefined,
+    },
   };
 }
 
@@ -84,15 +119,31 @@ export async function createUser(input: {
   const salt = makeSalt();
   const passwordHash = await hashPassword(input.password, salt);
   const now = new Date().toISOString();
+  const initialPlan = getInitialPlanForEmail(input.email);
   const rows = (await sql`
     insert into users (
       id, email, email_normalized, name, plan, password_hash, password_salt, created_at, updated_at
     ) values (
       ${makeId()}, ${input.email.trim()}, ${normalizeEmail(input.email)}, ${input.name || null},
-      ${DEFAULT_SIGNUP_PLAN}, ${passwordHash}, ${salt}, ${now}, ${now}
+      ${initialPlan}, ${passwordHash}, ${salt}, ${now}, ${now}
     )
-    returning id, email, name, plan, created_at
-  `) as Pick<UserRow, "id" | "email" | "name" | "plan" | "created_at">[];
+    returning
+      id, email, name, plan, created_at,
+      stripe_customer_id, stripe_subscription_id, stripe_subscription_status,
+      stripe_price_id, stripe_current_period_end
+  `) as Pick<
+    UserRow,
+    | "id"
+    | "email"
+    | "name"
+    | "plan"
+    | "created_at"
+    | "stripe_customer_id"
+    | "stripe_subscription_id"
+    | "stripe_subscription_status"
+    | "stripe_price_id"
+    | "stripe_current_period_end"
+  >[];
   return toUser(rows[0]);
 }
 
@@ -160,12 +211,27 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   if (!token || !hasDatabaseUrl()) return null;
 
   const rows = (await getSql()`
-    select u.id, u.email, u.name, u.plan, u.created_at
+    select
+      u.id, u.email, u.name, u.plan, u.created_at,
+      u.stripe_customer_id, u.stripe_subscription_id, u.stripe_subscription_status,
+      u.stripe_price_id, u.stripe_current_period_end
     from user_sessions s
     join users u on u.id = s.user_id
     where s.token_hash = ${hashToken(token)}
       and s.expires_at > now()
     limit 1
-  `) as Pick<UserRow, "id" | "email" | "name" | "plan" | "created_at">[];
+  `) as Pick<
+    UserRow,
+    | "id"
+    | "email"
+    | "name"
+    | "plan"
+    | "created_at"
+    | "stripe_customer_id"
+    | "stripe_subscription_id"
+    | "stripe_subscription_status"
+    | "stripe_price_id"
+    | "stripe_current_period_end"
+  >[];
   return rows[0] ? toUser(rows[0]) : null;
 }

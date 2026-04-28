@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -58,15 +58,44 @@ function loadPrefs(): Preferences {
 
 export default function SettingsPage() {
   const { user, signedIn } = useAuthUser();
-  const [prefs, setPrefs] = useState<Preferences>(defaultPrefs);
+  const [prefs, setPrefs] = useState<Preferences>(() => loadPrefs());
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
+
+  const persistPrefs = useCallback(
+    async (next: Preferences) => {
+      if (!signedIn) return;
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      }).catch(() => undefined);
+    },
+    [signedIn]
+  );
 
   useEffect(() => {
-    setPrefs(loadPrefs());
-  }, []);
+    if (!signedIn) return;
+    let cancelled = false;
+    fetch("/api/settings")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { preferences?: Partial<Preferences> } | null) => {
+        if (cancelled || !data?.preferences) return;
+        const next = { ...loadPrefs(), ...data.preferences };
+        setPrefs(next);
+        window.localStorage.setItem(PREFS_KEY, JSON.stringify(next));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
 
-  const updatePref = <K extends keyof Preferences>(key: K, value: Preferences[K]) => {
+  const updatePref = <K extends keyof Preferences>(
+    key: K,
+    value: Preferences[K]
+  ) => {
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
       try {
@@ -75,6 +104,7 @@ export default function SettingsPage() {
       } catch {
         // ignore storage failures
       }
+      void persistPrefs(next);
       return next;
     });
   };
@@ -90,6 +120,44 @@ export default function SettingsPage() {
         month: "long",
       })
     : "—";
+
+  const billingStatus = user?.billing?.stripeSubscriptionStatus;
+  const billingManagedByStripe = Boolean(user?.billing?.stripeCustomerId);
+  const renewalDate = user?.billing?.stripeCurrentPeriodEnd
+    ? new Date(user.billing.stripeCurrentPeriodEnd).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+
+  const openBilling = async () => {
+    if (!signedIn) {
+      window.location.href = "/signin";
+      return;
+    }
+    setBillingLoading(true);
+    try {
+      const endpoint = billingManagedByStripe
+        ? "/api/billing/portal"
+        : "/api/billing/checkout";
+      const response = await fetch(endpoint, { method: "POST" });
+      const data = (await response.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+      };
+      if (!response.ok || !data.url) {
+        throw new Error(data.error ?? "Billing is not available yet.");
+      }
+      window.location.href = data.url;
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "Billing is not available yet."
+      );
+    } finally {
+      setBillingLoading(false);
+    }
+  };
 
   const onSignOut = async () => {
     setSigningOut(true);
@@ -174,18 +242,26 @@ export default function SettingsPage() {
                   You&apos;re on {planDefinition.name}
                 </p>
                 <p className="mt-0.5 text-xs text-ink-300">
-                  {planDefinition.summary}
+                  {billingStatus
+                    ? `Stripe status: ${billingStatus}${renewalDate ? ` until ${renewalDate}` : ""}.`
+                    : planDefinition.summary}
                 </p>
               </div>
             </div>
             <div className="flex flex-shrink-0 items-center gap-2">
-              <Link
-                href="/pricing?from=settings"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-ember-500 px-4 py-2.5 text-sm font-medium text-white shadow-ember hover:bg-ember-600"
+              <button
+                type="button"
+                onClick={openBilling}
+                disabled={billingLoading}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-ember-500 px-4 py-2.5 text-sm font-medium text-white shadow-ember hover:bg-ember-600 disabled:cursor-wait disabled:opacity-70"
               >
-                <Sparkles size={13} />
-                Manage plan
-              </Link>
+                {billingLoading ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Sparkles size={13} />
+                )}
+                {billingManagedByStripe ? "Manage billing" : "Open billing"}
+              </button>
             </div>
           </div>
         </Section>

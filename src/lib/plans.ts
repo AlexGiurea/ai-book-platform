@@ -12,6 +12,7 @@ export interface PlanDefinition {
   bestFor: string;
   cta: string;
   href: string;
+  stripePriceEnv?: string;
   featured?: boolean;
   features: string[];
   limits: {
@@ -27,11 +28,8 @@ export interface PlanDefinition {
 export const FREE_PLAN_MODEL = "gpt-5.4-mini";
 export const PRO_PLAN_MODEL = "gpt-5.5";
 
-// Billing is not active yet. Keep every account on Pro during development,
-// while preserving the Free/Pro boundary in code for the payment rollout.
-export const ACTIVE_DEVELOPMENT_PLAN: SubscriptionPlan = "pro";
-export const DEFAULT_SIGNUP_PLAN: SubscriptionPlan = ACTIVE_DEVELOPMENT_PLAN;
-export const FORCE_PRO_FOR_BETA = true;
+export const DEFAULT_SIGNUP_PLAN: SubscriptionPlan = "free";
+export const FALLBACK_PROJECT_PLAN: SubscriptionPlan = DEFAULT_SIGNUP_PLAN;
 
 export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
   free: {
@@ -45,7 +43,7 @@ export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
       "A focused way to try Folio, draft shorter books, and keep a private library before upgrading.",
     bestFor: "Exploring ideas, sample projects, and early outlines",
     cta: "Start free",
-    href: "/signup",
+    href: "/signup?plan=free",
     features: [
       "Private account library",
       "Idea, upload, and canvas intake",
@@ -74,7 +72,8 @@ export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
       "The full creative engine for serious manuscripts, richer planning, longer writing runs, and publishing polish.",
     bestFor: "Authors building complete books and repeatable publishing workflows",
     cta: "Use Pro",
-    href: "/signup",
+    href: "/signup?plan=pro",
+    stripePriceEnv: "STRIPE_PRO_PRICE_ID",
     featured: true,
     features: [
       "Everything in Free",
@@ -98,8 +97,7 @@ export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
 export const PLAN_ORDER: SubscriptionPlan[] = ["free", "pro"];
 
 export function normalizePlan(value: unknown): SubscriptionPlan {
-  if (FORCE_PRO_FOR_BETA) return ACTIVE_DEVELOPMENT_PLAN;
-  return value === "free" || value === "pro" ? value : ACTIVE_DEVELOPMENT_PLAN;
+  return value === "free" || value === "pro" ? value : DEFAULT_SIGNUP_PLAN;
 }
 
 export function getPlanDefinition(plan: unknown): PlanDefinition {
@@ -108,4 +106,31 @@ export function getPlanDefinition(plan: unknown): PlanDefinition {
 
 export function getModelForPlan(plan: unknown): string {
   return getPlanDefinition(plan).model;
+}
+
+export function getProEmailSet(): Set<string> {
+  return new Set(
+    (process.env.FOLIO_PRO_EMAILS ?? process.env.FOLIO_OWNER_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+export function getInitialPlanForEmail(email: string): SubscriptionPlan {
+  return getProEmailSet().has(email.trim().toLowerCase())
+    ? "pro"
+    : DEFAULT_SIGNUP_PLAN;
+}
+
+export function canCreateProject(plan: unknown, existingProjectCount: number): boolean {
+  const normalized = normalizePlan(plan);
+  if (normalized === "pro") return true;
+  return existingProjectCount < 1;
+}
+
+export function canUseLength(plan: unknown, length: unknown): boolean {
+  const normalized = normalizePlan(plan);
+  if (normalized === "pro") return true;
+  return length === "dev" || length === "short" || length === "medium";
 }

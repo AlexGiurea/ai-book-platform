@@ -3,7 +3,7 @@ import { coverAgent } from "./cover-agent";
 import { isGenerationCancelled, toGenerationCancelled } from "./generation-errors";
 import { store } from "./context-store";
 
-export async function processNextGenerationJob(): Promise<{
+export async function processNextGenerationJob(userId?: string): Promise<{
   processed: boolean;
   jobId?: string;
   projectId?: string;
@@ -11,7 +11,7 @@ export async function processNextGenerationJob(): Promise<{
   status?: "complete" | "failed";
   error?: string;
 }> {
-  const job = await store.claimNextJob();
+  const job = await store.claimNextJob(userId);
   if (!job) return { processed: false };
 
   const preProject = await store.getProject(job.projectId);
