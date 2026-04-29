@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -130,15 +130,23 @@ export default function CreatePage() {
     documents.length + characters.length + worldEntries.length + notes.length;
   const canGenerate = idea.trim().length > 10 || canvasItemCount > 0;
 
+  const resizeIdeaTextarea = useCallback((el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
+    el.style.overflowY = el.scrollHeight > 320 ? "auto" : "hidden";
+  }, []);
+
   const handleTextareaInput = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setIdea(e.target.value);
-      const el = e.target;
-      el.style.height = "auto";
-      el.style.height = Math.min(el.scrollHeight, 320) + "px";
+      resizeIdeaTextarea(e.target);
     },
-    []
+    [resizeIdeaTextarea]
   );
+
+  useEffect(() => {
+    if (textareaRef.current) resizeIdeaTextarea(textareaRef.current);
+  }, [idea, resizeIdeaTextarea]);
 
   const formatBytes = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -323,6 +331,7 @@ export default function CreatePage() {
         >
           <textarea
             ref={textareaRef}
+            aria-label="Book idea prompt"
             value={idea}
             onChange={handleTextareaInput}
             onKeyDown={handleKeyDown}
@@ -331,8 +340,8 @@ export default function CreatePage() {
 · "A mystery about a lighthouse keeper who receives letters from the future"
 · "A lore book for a world where music is the source of all magic"
 · "Turn these character notes into a fantasy novel: Aria is a cartographer who discovers her maps are changing on their own…"`}
-            className="w-full min-h-[180px] p-6 pb-4 bg-transparent text-ink-400 placeholder-ink-200 text-[15px] leading-relaxed focus:outline-none font-sans resize-none"
-            style={{ minHeight: "180px" }}
+            className="w-full min-h-[180px] max-h-[320px] overscroll-contain p-6 pb-4 pr-8 bg-transparent text-ink-400 placeholder-ink-200 text-[15px] leading-relaxed focus:outline-none font-sans resize-none overflow-y-auto"
+            style={{ minHeight: "180px", scrollbarGutter: "stable" }}
           />
           <div className="flex items-center justify-end px-4 pb-4">
             <div className="flex items-center gap-3">

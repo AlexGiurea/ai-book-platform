@@ -175,6 +175,7 @@ export type ProjectStatus =
 export interface BookProject {
   id: string;
   userId?: string;
+  userEmail?: string;
   plan: SubscriptionPlan;
   input: ProjectInput;
   status: ProjectStatus;

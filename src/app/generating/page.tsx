@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { BatchEvent, GenerationJob } from "@/lib/agent/types";
 import { estimatePdfPagesFromWordCount } from "@/lib/page-estimate";
+import { cn } from "@/lib/utils";
 
 /** Single canonical production host for this app (Folio on Vercel). */
 const PRODUCTION_APP_URL = "https://ai-book-platform-alex-giureas-projects.vercel.app";
@@ -718,16 +719,13 @@ function BibleReviewPanel({
         The blueprint is the book&apos;s creative map — approve when it captures what you want to read.
       </p>
       {showStop && onStop && (
-        <p className="mt-2 text-center text-[10px] text-parchment-500/30">
-          <button
-            type="button"
-            onClick={onStop}
-            disabled={stopBusy}
-            className="cursor-pointer border-b border-transparent text-parchment-500/50 transition hover:border-parchment-500/30 hover:text-parchment-400/70 disabled:cursor-wait disabled:opacity-50"
-          >
-            {stopBusy ? "Stopping…" : "Stop generation (discard)"}
-          </button>
-        </p>
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <ForceStopButton onClick={onStop} busy={stopBusy} compact />
+          <p className="max-w-sm text-center text-[10px] leading-relaxed text-parchment-500/45">
+            Interrupts the current blueprint or chapter run, cancels queued
+            work, and keeps any partial project record in your library.
+          </p>
+        </div>
       )}
     </motion.div>
   );
@@ -748,6 +746,31 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="text-[9px] uppercase tracking-widest text-parchment-500/50 mb-0.5">{label}</p>
       <p className="text-sm font-mono text-parchment-200">{value}</p>
     </div>
+  );
+}
+
+function ForceStopButton({
+  onClick,
+  busy,
+  compact = false,
+}: {
+  onClick: () => void;
+  busy?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className={cn(
+        "inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-red-400/35 bg-red-500/12 font-medium text-red-100 shadow-[0_0_28px_-18px_rgba(248,113,113,0.9)] transition hover:border-red-300/55 hover:bg-red-500/20 hover:text-white disabled:cursor-wait disabled:opacity-60",
+        compact ? "px-3 py-2 text-xs" : "px-4 py-3 text-sm"
+      )}
+    >
+      <AlertTriangle size={compact ? 13 : 15} />
+      {busy ? "Force stopping..." : "Force stop run"}
+    </button>
   );
 }
 
@@ -1172,6 +1195,18 @@ export default function GeneratingPage() {
                           </>
                         )}
                 </p>
+                {canStop && (
+                  <div className="mt-6 flex flex-col items-center gap-2">
+                    <ForceStopButton
+                      onClick={handleStopGeneration}
+                      busy={cancelBusy}
+                    />
+                    <p className="max-w-sm text-xs leading-relaxed text-parchment-500/70">
+                      Use this if the book bible, chapter writing, or cover
+                      step is stuck and you want to kill the active run.
+                    </p>
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -1261,18 +1296,6 @@ export default function GeneratingPage() {
           </motion.div>
         )}
 
-        {canStop && !awaitingApproval && (
-          <p className="mb-3 text-center text-[10px] text-parchment-500/30">
-            <button
-              type="button"
-              onClick={handleStopGeneration}
-              disabled={cancelBusy}
-              className="cursor-pointer border-b border-transparent text-parchment-500/45 transition hover:border-parchment-500/35 hover:text-parchment-400/75 disabled:cursor-wait disabled:opacity-50"
-            >
-              {cancelBusy ? "Stopping…" : "Stop generation"}
-            </button>
-          </p>
-        )}
 
         <motion.p className="text-center text-xs text-parchment-500/40 mt-8"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1, duration: 0.5 }}>

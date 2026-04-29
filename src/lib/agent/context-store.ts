@@ -1,4 +1,5 @@
 import { getSql, hasDatabaseUrl } from "@/lib/db/postgres";
+import { syncBookToNotion } from "@/lib/notion/book-sync";
 import {
   FALLBACK_PROJECT_PLAN,
   normalizePlan,
@@ -54,6 +55,7 @@ function iso(value: unknown): string {
 type ProjectRow = {
   id: string;
   user_id: string | null;
+  user_email?: string | null;
   plan: string | null;
   input: ProjectInput;
   status: ProjectStatus;
@@ -141,6 +143,7 @@ function mapProject(row: ProjectRow, batches: Batch[], events: BatchEvent[]): Bo
   return {
     id: row.id,
     userId: row.user_id ?? undefined,
+    userEmail: row.user_email ?? undefined,
     plan: normalizePlan(row.plan),
     input: row.input,
     status: row.status,
@@ -182,6 +185,17 @@ export class ContextStore {
     return hasDatabaseUrl();
   }
 
+  private syncProjectToNotion(projectId: string): void {
+    void this.getProject(projectId)
+      .then((project) => {
+        if (project) return syncBookToNotion(project);
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[notion-sync] ${projectId}: ${message}`);
+      });
+  }
+
   async createProject(
     input: ProjectInput,
     userId?: string,
@@ -209,6 +223,7 @@ export class ContextStore {
 
     if (!this.persistent) {
       memory.projects.set(project.id, project);
+      this.syncProjectToNotion(project.id);
       return project;
     }
 
@@ -223,6 +238,7 @@ export class ContextStore {
         ${now}, ${now}
       )
     `;
+    this.syncProjectToNotion(project.id);
     return project;
   }
 
@@ -230,7 +246,12 @@ export class ContextStore {
     if (!this.persistent) return memory.projects.get(id);
 
     const sql = getSql();
-    const rows = (await sql`select * from projects where id = ${id}`) as ProjectRow[];
+    const rows = (await sql`
+      select p.*, u.email as user_email
+      from projects p
+      left join users u on u.id = p.user_id
+      where p.id = ${id}
+    `) as ProjectRow[];
     const row = rows[0];
     if (!row) return undefined;
 
@@ -300,6 +321,7 @@ export class ContextStore {
       p.status = status;
       if (error) p.error = error;
       p.updatedAt = now;
+      this.syncProjectToNotion(id);
       return;
     }
 
@@ -310,6 +332,7 @@ export class ContextStore {
           updated_at = ${now}
       where id = ${id}
     `;
+    this.syncProjectToNotion(id);
   }
 
   async setBible(id: string, bible: StoryBible): Promise<void> {
@@ -325,6 +348,7 @@ export class ContextStore {
       p.cover = undefined;
       p.coverError = undefined;
       p.updatedAt = now;
+      this.syncProjectToNotion(id);
       return;
     }
 
@@ -340,6 +364,7 @@ export class ContextStore {
           updated_at = ${now}
       where id = ${id}
     `;
+    this.syncProjectToNotion(id);
   }
 
   async appendBatch(
@@ -359,6 +384,7 @@ export class ContextStore {
       p.batches.push(full);
       p.totalWords += full.wordCount;
       p.updatedAt = now;
+      this.syncProjectToNotion(id);
       return full;
     }
 
@@ -393,6 +419,7 @@ export class ContextStore {
         where id = ${id}
       `,
     ]);
+    this.syncProjectToNotion(id);
 
     return full;
   }
@@ -404,6 +431,7 @@ export class ContextStore {
       if (!p) return;
       p.events.push({ ...event, timestamp });
       p.updatedAt = timestamp;
+      this.syncProjectToNotion(id);
       return;
     }
 
@@ -417,6 +445,7 @@ export class ContextStore {
         update projects set updated_at = ${timestamp} where id = ${id}
       `,
     ]);
+    this.syncProjectToNotion(id);
   }
 
   async updateMetadata(
@@ -430,6 +459,7 @@ export class ContextStore {
       if (meta.title && !p.title) p.title = meta.title;
       if (meta.synopsis && !p.synopsis) p.synopsis = meta.synopsis;
       p.updatedAt = now;
+      this.syncProjectToNotion(id);
       return;
     }
 
@@ -440,6 +470,7 @@ export class ContextStore {
           updated_at = ${now}
       where id = ${id}
     `;
+    this.syncProjectToNotion(id);
   }
 
   async updateCoverStatus(
@@ -455,6 +486,7 @@ export class ContextStore {
       if (error) p.coverError = error;
       if (status !== "failed") p.coverError = undefined;
       p.updatedAt = now;
+      this.syncProjectToNotion(id);
       return;
     }
 
@@ -465,6 +497,7 @@ export class ContextStore {
           updated_at = ${now}
       where id = ${id}
     `;
+    this.syncProjectToNotion(id);
   }
 
   async setCover(id: string, cover: BookCover): Promise<void> {
@@ -475,6 +508,7 @@ export class ContextStore {
       p.coverStatus = "complete";
       p.coverError = undefined;
       p.updatedAt = cover.createdAt;
+      this.syncProjectToNotion(id);
       return;
     }
 
@@ -486,6 +520,7 @@ export class ContextStore {
           updated_at = ${cover.createdAt}
       where id = ${id}
     `;
+    this.syncProjectToNotion(id);
   }
 
   async getFullContext(id: string): Promise<FullContext | undefined> {
@@ -510,7 +545,10 @@ export class ContextStore {
 
     const sql = getSql();
     const rows = (await sql`
-      select * from projects order by created_at desc
+      select p.*, u.email as user_email
+      from projects p
+      left join users u on u.id = p.user_id
+      order by p.created_at desc
     `) as ProjectRow[];
     const projects = await Promise.all(rows.map((row) => this.getProject(row.id)));
     return projects.filter((project): project is BookProject => Boolean(project));
@@ -525,9 +563,11 @@ export class ContextStore {
 
     const sql = getSql();
     const rows = (await sql`
-      select * from projects
-      where user_id = ${userId}
-      order by created_at desc
+      select p.*, u.email as user_email
+      from projects p
+      left join users u on u.id = p.user_id
+      where p.user_id = ${userId}
+      order by p.created_at desc
     `) as ProjectRow[];
     const projects = await Promise.all(rows.map((row) => this.getProject(row.id)));
     return projects.filter((project): project is BookProject => Boolean(project));

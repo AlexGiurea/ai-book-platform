@@ -24,7 +24,7 @@ import {
   Wand2,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
-import AccountMenu from "@/components/AccountMenu";
+import Navbar from "@/components/Navbar";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { PLAN_DEFINITIONS, PLAN_ORDER } from "@/lib/plans";
 import { dashboardBooks } from "@/lib/sampleData";
@@ -1131,7 +1131,7 @@ function PricingPreview() {
 }
 
 export default function LandingPage() {
-  const { user, signedIn } = useAuthUser();
+  const { signedIn } = useAuthUser();
 
   return (
     <div className="min-h-screen bg-parchment-100 overflow-hidden">
@@ -1142,46 +1142,10 @@ export default function LandingPage() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full bg-parchment-200/40 blur-[140px]" />
       </div>
 
-      {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
-        <BrandLogo markClassName="h-7 w-7" />
-        <div className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-1 md:flex">
-          {[
-            ["Product", "/product"],
-            ["Pricing", "/pricing"],
-            ["About", "/about"],
-          ].map(([label, href]) => (
-            <Link
-              key={href}
-              href={href}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-ink-300 transition-colors hover:bg-parchment-200/60 hover:text-ink-500"
-            >
-              {label}
-            </Link>
-          ))}
-        </div>
-        <div className="flex items-center gap-3">
-          {!signedIn && (
-            <Link
-              href="/signin"
-              className="text-sm font-medium text-ink-300 hover:text-ink-500 transition-colors px-3 py-2 rounded-lg hover:bg-parchment-200/60"
-            >
-              Sign in
-            </Link>
-          )}
-          <Link
-            href={signedIn ? "/dashboard" : "/signup"}
-            className="flex items-center gap-1.5 px-4 py-2 bg-ink-500 hover:bg-ink-400 text-parchment-50 text-sm font-medium rounded-lg transition-all duration-150 shadow-warm-sm hover:shadow-warm"
-          >
-            {signedIn ? "Dashboard" : "Start free"}
-            <ArrowRight size={13} />
-          </Link>
-          <AccountMenu user={user} variant="light" />
-        </div>
-      </nav>
+      <Navbar />
 
       {/* Hero */}
-      <section className="relative z-10 max-w-5xl mx-auto px-8 pt-24 pb-20 text-center">
+      <section className="relative z-10 max-w-5xl mx-auto px-8 pt-40 pb-20 text-center">
         <motion.div
           initial={false}
           animate="visible"

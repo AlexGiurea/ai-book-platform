@@ -18,6 +18,7 @@ Vercel deployment: [https://ai-book-platform-34otkfc6w-alex-giureas-projects.ver
 - Dashboard and reader views for managing and reading generated projects.
 - Free and Pro account tiers with plan-aware model selection and export gates.
 - Stripe Billing foundation for Checkout, customer portal, webhooks, and subscription state sync.
+- Optional Notion mirror that upserts generated book projects into a Folio Book Projects database.
 
 ## Tech Stack
 
@@ -70,6 +71,7 @@ npm run build
 npm run start
 npm run lint
 npm run db:migrate
+npm run notion:sync-books
 npm run test:cover-image
 ```
 
@@ -87,6 +89,8 @@ npm run test:cover-image
 | `FOLIO_OWNER_EMAILS` | No | Comma-separated email allowlist that receives Pro without Stripe. Use this for owner and beta accounts before billing launches. |
 | `DATABASE_URL` | Yes for persistence | Neon Postgres connection string used for durable projects, batches, events, and jobs. |
 | `BLOB_READ_WRITE_TOKEN` | Yes for persistent covers | Vercel Blob token used to persist generated cover images. |
+| `NOTION_API_KEY` | No | Optional Notion internal integration token for syncing generated book metadata. |
+| `NOTION_BOOKS_DATABASE_ID` | No | Optional Notion database ID for the Folio Book Projects mirror. Current workspace database: `08d8fb40c86d4420b2196876e4baa6a5`. |
 | `STRIPE_SECRET_KEY` | No until billing test | Stripe secret key used by Checkout and the customer portal. |
 | `STRIPE_WEBHOOK_SECRET` | No until billing test | Signing secret for `/api/billing/webhook`. |
 | `STRIPE_PRO_PRICE_ID` | No until billing test | Stripe recurring Price ID for the Pro plan. |
@@ -115,6 +119,16 @@ npm run db:migrate
 Generated book projects are stored in Neon Postgres. Cover images are uploaded to Vercel Blob when `BLOB_READ_WRITE_TOKEN` is present. Without storage environment variables, the app falls back to local in-memory/file storage for development only.
 
 Long-running generation is split into durable jobs stored in Postgres. The `/api/jobs/run` endpoint processes one job unit at a time. The app also kicks this endpoint while a user is watching generation progress, and `vercel.json` includes a Hobby-compatible daily safety sweep. For unattended minute-by-minute processing after a browser tab closes, use Vercel Pro Cron or an external scheduler to call `/api/jobs/run`.
+
+## Notion Book Mirror
+
+The Notion database `Folio Book Projects` lives under the AI Book-Writing Platform page. Set `NOTION_API_KEY` and `NOTION_BOOKS_DATABASE_ID` to enable automatic upserts whenever a book project is created, planned, written, completed, or receives a cover.
+
+Backfill or repair the Notion mirror from Neon:
+
+```bash
+npm run notion:sync-books
+```
 
 ## Deployment
 

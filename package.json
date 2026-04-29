@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "node scripts/migrate.mjs",
+    "notion:sync-books": "node scripts/sync-notion-books.mjs",
     "test:cover-image": "node scripts/test-cover-generation.mjs"
   },
   "dependencies": {
