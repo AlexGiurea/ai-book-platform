@@ -38,6 +38,8 @@ export async function processNextGenerationJob(userId?: string): Promise<{
 
     if (job.type === "plan") {
       await bookComposer.planBook(job.projectId);
+    } else if (job.type === "plan_batches") {
+      await bookComposer.continueBlueprintPlanning(job.projectId);
     } else if (job.type === "write") {
       await bookComposer.writeNextBatch(job.projectId);
     } else if (job.type === "cover") {

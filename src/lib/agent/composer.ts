@@ -1,8 +1,8 @@
-import { store } from "./context-store";
+import { store, WORDS_PER_BATCH } from "./context-store";
 import { coverAgent } from "./cover-agent";
 import { isGenerationCancelled } from "./generation-errors";
 import { getModelName } from "./openai-client";
-import { plannerAgent } from "./planner-agent";
+import { MONOLITHIC_PLAN_BATCH_CAP, plannerAgent } from "./planner-agent";
 import { writerAgent } from "./writer-agent";
 
 const BATCH_RETRY_ATTEMPTS = 2; // total attempts per batch (1 original + 1 retry)
@@ -21,9 +21,21 @@ export class BookComposer {
     await store.updateStatus(projectId, "planning");
 
     try {
-      await plannerAgent.generateBible(projectId);
+      const totalBatches = Math.max(1, Math.round(project.targetWords / WORDS_PER_BATCH));
+
+      if (totalBatches <= MONOLITHIC_PLAN_BATCH_CAP) {
+        await plannerAgent.generateBibleMonolithic(projectId);
+      } else {
+        await plannerAgent.generateBibleSpine(projectId);
+        await store.assertNotCancelled(projectId);
+        await store.enqueueJob(projectId, "plan_batches");
+      }
       await store.assertNotCancelled(projectId);
-      await store.updateStatus(projectId, "awaiting_approval");
+
+      const after = await store.getProject(projectId);
+      if (after?.bible && after.bible.batches.length >= after.bible.totalBatches) {
+        await store.updateStatus(projectId, "awaiting_approval");
+      }
     } catch (err) {
       if (isGenerationCancelled(err)) throw err;
       const msg = err instanceof Error ? err.message : String(err);
@@ -43,11 +55,54 @@ export class BookComposer {
     await store.assertNotCancelled(projectId);
     await store.updateStatus(projectId, "planning");
     try {
-      await plannerAgent.generateBible(projectId);
+      const totalBatches = Math.max(1, Math.round(project.targetWords / WORDS_PER_BATCH));
+
+      if (totalBatches <= MONOLITHIC_PLAN_BATCH_CAP) {
+        await plannerAgent.generateBibleMonolithic(projectId);
+      } else {
+        await plannerAgent.generateBibleSpine(projectId);
+        await store.assertNotCancelled(projectId);
+        await store.enqueueJob(projectId, "plan_batches");
+      }
       await store.assertNotCancelled(projectId);
-      await store.updateStatus(projectId, "awaiting_approval");
+
+      const after = await store.getProject(projectId);
+      if (after?.bible && after.bible.batches.length >= after.bible.totalBatches) {
+        await store.updateStatus(projectId, "awaiting_approval");
+      }
     } catch (err) {
       if (isGenerationCancelled(err)) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      await store.updateStatus(projectId, "failed", msg);
+      await store.appendEvent(projectId, { type: "project_failed", error: msg, model });
+      throw err;
+    }
+  }
+
+  /** Continuation job for staged spine → batch blueprints. */
+  async continueBlueprintPlanning(projectId: string): Promise<void> {
+    const project = await store.getProject(projectId);
+    if (!project?.bible) {
+      throw new Error(`Blueprint planning cannot continue — no bible loaded for ${projectId}`);
+    }
+    if (
+      project.bible.batches.length >= project.bible.totalBatches &&
+      project.status !== "awaiting_approval"
+    ) {
+      await store.updateStatus(projectId, "awaiting_approval");
+      return;
+    }
+
+    try {
+      const done = await plannerAgent.appendBlueprintSegment(projectId);
+      if (!done) {
+        await store.enqueueJob(projectId, "plan_batches", { force: true });
+      } else {
+        await store.updateStatus(projectId, "awaiting_approval");
+      }
+    } catch (err) {
+      if (isGenerationCancelled(err)) throw err;
+      const model = getModelName(project.plan);
       const msg = err instanceof Error ? err.message : String(err);
       await store.updateStatus(projectId, "failed", msg);
       await store.appendEvent(projectId, { type: "project_failed", error: msg, model });
@@ -189,6 +244,18 @@ export class BookComposer {
    */
   async composeBook(projectId: string): Promise<void> {
     await this.planBook(projectId);
+    for (let i = 0; i < 120; i++) {
+      const p = await store.getProject(projectId);
+      if (!p?.bible) throw new Error("composeBook: bible missing after plan");
+      if (p.status === "failed")
+        throw new Error(p.error ?? "Planning failed");
+      if (p.bible.batches.length >= p.bible.totalBatches) break;
+      await plannerAgent.appendBlueprintSegment(projectId);
+    }
+    const ready = await store.getProject(projectId);
+    if (ready?.bible && ready.bible.batches.length < ready.bible.totalBatches) {
+      throw new Error("composeBook: staged planning did not finish");
+    }
     await this.writeBook(projectId);
   }
 }

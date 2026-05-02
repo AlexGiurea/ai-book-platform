@@ -20,12 +20,12 @@ import {
   Terminal,
 } from "lucide-react";
 import type { BatchEvent, GenerationJob } from "@/lib/agent/types";
+import { PLANNER_TIMEOUT_MS } from "@/lib/agent/constants";
 import { estimatePdfPagesFromWordCount } from "@/lib/page-estimate";
 import { cn } from "@/lib/utils";
 
 /** Single canonical production host for this app (Folio on Vercel). */
 const PRODUCTION_APP_URL = "https://ai-book-platform-alex-giureas-projects.vercel.app";
-const PLANNER_TIMEOUT_MS = 230_000;
 
 // ─── Steps ────────────────────────────────────────────────────
 const steps = [
@@ -79,6 +79,11 @@ interface ProjectState {
       batchStart: number;
       batchEnd: number;
       targetWords: number;
+    }>;
+    batches?: Array<{
+      number: number;
+      purpose?: string;
+      chapterTitle?: string;
     }>;
   };
   batches: Array<{
@@ -231,6 +236,8 @@ function ObservabilityPanel({
     (e) =>
       e.type === "planning_start" ||
       e.type === "planning_heartbeat" ||
+      e.type === "planning_spine_complete" ||
+      e.type === "planning_batches_progress" ||
       e.type === "planning_complete" ||
       e.type === "cover_start" ||
       e.type === "cover_complete" ||
@@ -329,6 +336,36 @@ function ObservabilityPanel({
                     {ev.durationMs != null ? ` · ${fmtDuration(ev.durationMs)} since start` : ""}
                   </span>
                   <span className="text-[10px] text-parchment-500/40 ml-auto font-mono">{fmtTime(ev.timestamp)}</span>
+                </motion.div>
+              );
+            }
+            if (ev.type === "planning_spine_complete") {
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2.5">
+                  <Layers size={12} className="text-sky-300/85 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-parchment-300">Story spine locked</span>
+                    <span className="text-xs text-parchment-500/60 ml-1.5">
+                      {ev.totalChapters != null ? `${ev.totalChapters} chapters mapped` : ""}
+                      {ev.totalBatches != null ? ` · ${ev.totalBatches} prose batches queued` : ""}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>
+                </motion.div>
+              );
+            }
+            if (ev.type === "planning_batches_progress") {
+              const have = ev.completedBatches ?? 0;
+              const total = ev.plannedBatchesTotal ?? 0;
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2.5">
+                  <Activity size={12} className="text-sky-300/70 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[11px] text-parchment-400/95">
+                      Detailing prose batches{total ? ` (${have}/${total})` : ` (${have})`}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>
                 </motion.div>
               );
             }
@@ -1000,7 +1037,23 @@ export default function GeneratingPage() {
       : 0;
   const planningProgress =
     project?.status === "planning"
-      ? Math.min(95, Math.max(6, Math.round((planningElapsedMs / PLANNER_TIMEOUT_MS) * 95)))
+      ? (() => {
+          const bible = project.bible;
+          const plannedRatio =
+            bible &&
+            bible.totalBatches > 0 &&
+            bible.batches &&
+            bible.batches.length > 0
+              ? bible.batches.length / bible.totalBatches
+              : null;
+          if (plannedRatio != null) {
+            return Math.min(95, Math.max(10, Math.round(10 + plannedRatio * 85)));
+          }
+          return Math.min(
+            28,
+            Math.max(6, Math.round((planningElapsedMs / PLANNER_TIMEOUT_MS) * 27))
+          );
+        })()
       : 0;
   const lastSignalIso =
     project?.events[project.events.length - 1]?.timestamp ??

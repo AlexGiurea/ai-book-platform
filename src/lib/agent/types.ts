@@ -136,6 +136,8 @@ export type BatchEventType =
   | "project_start"
   | "planning_start"
   | "planning_heartbeat"
+  | "planning_spine_complete"
+  | "planning_batches_progress"
   | "planning_complete"
   | "cover_start"
   | "cover_complete"
@@ -160,6 +162,10 @@ export interface BatchEvent {
   totalBatches?: number;
   totalChapters?: number;
   bookTitle?: string;
+  /** Staged planning: blueprint rows finished so far */
+  completedBatches?: number;
+  /** Staged planning: total blueprint rows planned for the manuscript */
+  plannedBatchesTotal?: number;
 }
 
 export type ProjectStatus =
@@ -206,7 +212,7 @@ export interface FullContext {
   currentBatchNumber: number;
 }
 
-export type GenerationJobType = "plan" | "write" | "cover";
+export type GenerationJobType = "plan" | "plan_batches" | "write" | "cover";
 export type GenerationJobStatus = "queued" | "running" | "complete" | "failed";
 
 export interface GenerationJob {

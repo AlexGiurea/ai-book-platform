@@ -89,8 +89,17 @@ export function buildPlannerUserPrompt(params: {
   totalBatches: number;
   targetChapters: number;
   wordsPerBatch: number;
+  /** Spine pass omits batch blueprints; a second pipeline stage drafts them segment by segment (long books). */
+  phase?: "full" | "spine";
 }): string {
-  const { input, targetWords, totalBatches, targetChapters, wordsPerBatch } = params;
+  const {
+    input,
+    targetWords,
+    totalBatches,
+    targetChapters,
+    wordsPerBatch,
+    phase = "full",
+  } = params;
   const prefs = input.preferences;
   const contextFiles =
     input.contextFileNames && input.contextFileContents
@@ -156,7 +165,18 @@ ${input.idea}
 
 Preference priority rule: the user's actual idea and uploaded/context material are the source of truth. Genre, tone, length, POV, and illustration style are steering preferences only. If the idea or source material clearly implies a different POV or narrative approach, follow the user-provided creative intent and explain that choice through the blueprint's voiceGuide.
 
-${canvasBlock}${contextFiles ? `# ADDITIONAL USER CONTEXT (UPLOADED DOCUMENTS)\n${contextFiles}\n\n` : ""}# MECHANICAL TARGETS (OBEY EXACTLY)
+${canvasBlock}${contextFiles ? `# ADDITIONAL USER CONTEXT (UPLOADED DOCUMENTS)\n${contextFiles}\n\n` : ""}${
+      phase === "spine"
+        ? `# MECHANICAL TARGETS (SPINE PASS)
+- Target total words: ${targetWords.toLocaleString()}
+- Narrative batches after planning: roughly ${totalBatches} (${wordsPerBatch.toLocaleString()} words per batch mechanically). You will NOT emit per-batch blueprint rows yet; downstream passes will carve them precisely.
+- Target chapters: ~${targetChapters}; each chapter must declare targetWords proportional to pacing; they should SUM close to ${targetWords.toLocaleString()} words nominal.
+- Map dramatic structure mentally across roughly ${totalBatches} contiguous future batches ((inciting early, midpoint near half, climax near ninety percent)).
+- Story completeness: satisfying arc end-to-end across the negotiated length.
+
+# YOUR TASK
+Produce the STRUCTURED SPINE JSON only (canon plus chapter outlines with targetWords per chapter). No batch array yet.`
+        : `# MECHANICAL TARGETS (OBEY EXACTLY)
 - Target total words: ${targetWords.toLocaleString()}
 - Words per batch: ${wordsPerBatch.toLocaleString()}
 - TOTAL BATCHES: ${totalBatches}  ← produce exactly this many batch blueprints, numbered 1..${totalBatches}
@@ -166,7 +186,113 @@ ${canvasBlock}${contextFiles ? `# ADDITIONAL USER CONTEXT (UPLOADED DOCUMENTS)\n
 - Story completeness: this length preset must produce a complete, satisfying book. For shorter presets, reduce cast size, subplot count, and world complexity rather than leaving the plot unfinished.
 
 # YOUR TASK
-Build the complete, thorough, specific, publishable Book Blueprint for this book. Return the structured JSON. Make it the best literary plan you can produce — the writer will execute it verbatim.`;
+Build the complete, thorough, specific, publishable Book Blueprint for this book. Return the structured JSON. Make it the best literary plan you can produce — the writer will execute it verbatim.`
+    }`;
+}
+
+// ─── Spine phase (multi-stage planners): canon + chapters only, NO per-batch arrays ─────────
+
+export function buildPlannerSpineSystemPrompt(params: {
+  totalBatches: number;
+  wordsPerBatch: number;
+  targetChapters: number;
+}): string {
+  const { totalBatches, wordsPerBatch, targetChapters } = params;
+  return `You are Folio's chief story architect running the SPINE pass for a LONG book. Produce the complete creative canon plus a chapter roadmap. You MUST NOT emit per-batch blueprint rows yet; downstream passes will draft those after you lock this spine.
+
+BOOK SHAPE FOR THIS PLAN
+- The book will ship in approximately ${totalBatches} sequential writing batches (~${wordsPerBatch} words each).
+- Aim for roughly ${targetChapters} substantive chapters (${WORDS_PER_BATCH * 2}–${WORDS_PER_BATCH * 3} words per chapter by spacing scenes, not tiny chapters).
+
+CRAFT RULES (same rigor as a full bible)
+- No em dashes in any prose fields (no "—", "–", or "--" between clauses). Use commas, periods, parentheses, semicolons.
+- Characters: 4–12 depending on epic scope; concrete voices, arcs, motivations, relationships.
+- Chapters must each declare targetWords that sum CLOSE to the total manuscript target (${totalBatches * wordsPerBatch} words nominal). Rough proportionality guides later batch slicing.
+- Dramatic beats (inciting, midpoint, climax) must READ as if mapped across ${totalBatches} contiguous batches mentally, without naming batches here.
+- The opening chapter must anchor voice, protagonist, genre contract, and stakes. The finale must resolve the main arc and land a final emotional image — no teaser sequel hooks.
+
+RETURN JSON matching the STRUCTURED SPINE SCHEMA (no batches array).
+
+This spine is authoritative canon; later batch drafts must obey character names, world rules, and chapter summaries you set here.`;
+}
+
+export function buildPlannerSpineUserPrompt(params: {
+  input: ProjectInput;
+  targetWords: number;
+  totalBatches: number;
+  targetChapters: number;
+  wordsPerBatch: number;
+}): string {
+  return buildPlannerUserPrompt({ ...params, phase: "spine" });
+}
+
+// ─── Batch segment pass fills batches [start,end] contiguously ─────────────────
+
+export function buildPlannerBatchSegmentSystemPrompt(params: {
+  batchStart: number;
+  batchEnd: number;
+}): string {
+  const { batchStart, batchEnd } = params;
+  return `You extend an already-approved BOOK SPINE into executable BATCH BLUEPRINTS for Folio.
+
+You will OUTPUT ONLY batches ${batchStart}..${batchEnd} numbered consecutively. Each batch blueprint must be complete and specific enough for a novelist on the next step.
+
+RULES
+- Match chapter titles and plot promises from the provided chapter outlines.
+- Respect locked character names and world rules.
+- Maintain continuity from prior batches summarized for you below.
+- positionInChapter is "opening" | "middle" | "closing" | "single" within its chapter slice.
+- No em-dash punctuation in prose fields.
+- Produce EXACTLY ${batchEnd - batchStart + 1} blueprint objects in ascending batch number order.`;
+}
+
+export function buildPlannerBatchSegmentUserPrompt(params: {
+  bibleSummary: string;
+  chapterSlice: string;
+  precedingBatchesDigest: string;
+  batchStart: number;
+  batchEnd: number;
+  wordsPerBatch: number;
+}): string {
+  const {
+    bibleSummary,
+    chapterSlice,
+    precedingBatchesDigest,
+    batchStart,
+    batchEnd,
+    wordsPerBatch,
+  } = params;
+  return `# BOOK CANON DIGEST\n${bibleSummary}
+
+# CHAPTER SEGMENT (apply only within batches ${batchStart}–${batchEnd})\n${chapterSlice}
+
+# PRIOR BATCHES CONTEXT (facts + threads already planned)\n${precedingBatchesDigest || "(still near the opening — anchor world and protagonist voice.)"}
+
+# MECHANICAL RANGE
+Produce batch blueprints **${batchStart} through ${batchEnd}** inclusive. Each batch aims for ~${wordsPerBatch} words.
+
+Return ONLY a JSON object: { "batches": [ ... ] }. No extra prose.`;
+}
+
+export function summarizeBibleForSegmentPrompt(bible: StoryBible): string {
+  return [
+    `Title — ${bible.title}`,
+    `Logline — ${bible.logline}`,
+    `Premise — ${bible.premise}`,
+    `Synopsis — ${bible.synopsis}`,
+    `Themes — ${bible.themes.join("; ")}`,
+    `Voice — ${bible.voiceGuide}`,
+    `Style — ${bible.styleGuide}`,
+    `Setting — ${bible.setting.world}; era ${bible.setting.era}; rules ${bible.setting.rules}; tone ${bible.setting.atmosphere}`,
+    `Structural spine — ${bible.structure.actBreakdown}`,
+    `Inciting / midpoint / climax / resolution — ${bible.structure.inciting} / ${bible.structure.midpoint} / ${bible.structure.climax} / ${bible.structure.resolution}`,
+    `Characters (${bible.characters.length})\n${bible.characters
+      .map(
+        (c) =>
+          `- ${c.name} (${c.role}): motivation ${c.motivation}; arc ${c.arc}; ties ${c.relationships}`
+      )
+      .join("\n")}`,
+  ].join("\n");
 }
 
 // ════════════════════════════════════════════════════════════════

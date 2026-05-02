@@ -65,6 +65,48 @@ export const StoryBibleSchema = z.object({
   batches: z.array(BatchBlueprintSchema),
 });
 
+/** Spine phase: chapters include target pacing but not yet batch indices (those are computed in code). */
+export const ChapterSpineSchema = z.object({
+  number: z.number(),
+  title: z.string(),
+  summary: z.string(),
+  arcPurpose: z.string(),
+  openingHook: z.string(),
+  closingBeat: z.string(),
+  targetWords: z.number(),
+});
+
+export const StoryBibleSpineSchema = z.object({
+  title: z.string(),
+  synopsis: z.string(),
+  premise: z.string(),
+  logline: z.string(),
+  setting: z.object({
+    world: z.string(),
+    era: z.string(),
+    rules: z.string(),
+    atmosphere: z.string(),
+  }),
+  characters: z.array(CharacterSchema),
+  themes: z.array(z.string()),
+  structure: z.object({
+    actBreakdown: z.string(),
+    inciting: z.string(),
+    midpoint: z.string(),
+    climax: z.string(),
+    resolution: z.string(),
+  }),
+  voiceGuide: z.string(),
+  styleGuide: z.string(),
+  chapters: z.array(ChapterSpineSchema),
+});
+
+export const BatchSegmentOutputSchema = z.object({
+  batches: z.array(BatchBlueprintSchema),
+});
+
+export type StoryBibleSpineParsed = z.infer<typeof StoryBibleSpineSchema>;
+
 // ─── Writer per-batch output ─────────────────────────────────
 
 export const BatchOutputSchema = z.object({
