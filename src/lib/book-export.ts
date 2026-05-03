@@ -102,18 +102,29 @@ function approximateTextWidth(chars: number, fontSize: number): number {
   return chars * fontSize * 0.48;
 }
 
+function boldUcWidth(line: string, fontSize: number): number {
+  return line.length * fontSize * BOLD_UC_RATIO;
+}
+
 function layoutTitleBlocks(title: string): { lines: string[]; fontSize: number } {
   const trimmed = title.replace(/\s+/g, " ").trim() || "Untitled";
-  const usable = PDF_PAGE_WIDTH - PDF_MARGIN * 2;
-  for (const fontSize of [30, 26, 22, 18, 15]) {
-    const maxChars = Math.max(12, Math.floor(usable / (fontSize * 0.5)));
-    const lines = wrapText(trimmed, maxChars);
-    const fits = lines.every(
-      (line) => approximateTextWidth(line.length, fontSize) <= usable + 14
-    );
+  // Constrain title block tighter than page margins so it never crowds the trim.
+  const usable = PDF_PAGE_WIDTH - PDF_MARGIN * 2 - 8;
+  for (const fontSize of [26, 22, 19, 17, 15, 13]) {
+    const maxChars = Math.max(10, Math.floor(usable / (fontSize * BOLD_UC_RATIO)));
+    const lines = wrapText(trimmed.toUpperCase(), maxChars);
+    const fits = lines.every((line) => boldUcWidth(line, fontSize) <= usable);
     if (fits && lines.length <= 4) return { lines, fontSize };
   }
-  return { lines: wrapText(trimmed, Math.max(10, Math.floor(usable / 7))), fontSize: 14 };
+  // Last-ditch fallback: aggressive shrink.
+  const fontSize = 12;
+  const maxChars = Math.max(8, Math.floor(usable / (fontSize * BOLD_UC_RATIO)));
+  return { lines: wrapText(trimmed.toUpperCase(), maxChars), fontSize };
+}
+
+function centeredXBoldUc(line: string, fontSize: number): number {
+  const w = boldUcWidth(line, fontSize);
+  return Math.max(PDF_MARGIN, (PDF_PAGE_WIDTH - w) / 2);
 }
 
 function projectToExportBook(project: BookProject): ExportBook {
@@ -270,10 +281,12 @@ const FIRST_CHAPTER_BODY_TOP = 470;
 const CONTINUATION_BODY_TOP = 562;
 const PDF_BODY_BOTTOM = 84;
 const PDF_LINE_HEIGHT = 16.5;
-/** Extra vertical slack after the ornamental opening row */
-const DROP_CAP_ROW_LEAD = 24;
+/** Extra vertical slack after the ornamental opening row (kept tiny — cap doesn't descend below baseline) */
+const DROP_CAP_ROW_LEAD = 0;
 const PARA_GAP = PDF_LINE_HEIGHT * 0.18;
 const PARA_INDENT = 24;
+/** Times-Bold uppercase has wider average advance than the body 0.48 ratio. */
+const BOLD_UC_RATIO = 0.62;
 
 /** Subtle warm-charcoal accent for ornament rules — gentler than pure ember. */
 const TITLE_ACCENT_LINE = [0.42, 0.30, 0.18] as const;
@@ -411,8 +424,8 @@ function titlePage(book: ExportBook): PdfPage {
   for (const line of lines) {
     draws.push({
       kind: "text",
-      text: line.toUpperCase(),
-      x: centeredX(line.toUpperCase(), fontSize),
+      text: line,
+      x: centeredXBoldUc(line, fontSize),
       y,
       size: fontSize,
       font: "F2",
@@ -534,7 +547,7 @@ function chapterOpenHeaderOps(chapter: ExportBook["chapters"][number]): PdfDrawO
   draws.push({
     kind: "text",
     text: chapLabel,
-    x: centeredX(chapLabel, labelSize),
+    x: centeredXBoldUc(chapLabel, labelSize),
     y: chapY,
     size: labelSize,
     font: "F2",
