@@ -554,7 +554,9 @@ function colophonPage(book: ExportBook): PdfPage {
     { text: "All rights reserved.", size: 10, font: "F3" },
     { text: "Generated with Folio — folio.app", size: 9.5, font: "F3" },
   ];
-  let y = 200;
+  // Center the block vertically on the page (approx 80pt total block height).
+  const blockHeight = lines.reduce((h, ln) => h + ln.size * 1.6 + 4, 0);
+  let y = PDF_PAGE_HEIGHT / 2 + blockHeight / 2;
   for (const ln of lines) {
     draws.push({
       kind: "text",
