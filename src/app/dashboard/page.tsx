@@ -164,9 +164,38 @@ function projectToLibraryBook(project: ApiProject): LibraryBook {
   };
 }
 
+/**
+ * Local cache key for the user's library. We hydrate from sessionStorage on
+ * mount so revisiting the dashboard renders previously-seen books instantly,
+ * then refresh from the server in the background.
+ */
+const LIBRARY_CACHE_KEY = "folio.library.v1";
+
+function readLibraryCache(): LibraryBook[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(LIBRARY_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LibraryBook[];
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLibraryCache(books: LibraryBook[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(LIBRARY_CACHE_KEY, JSON.stringify(books));
+  } catch {
+    // Quota exceeded or storage disabled — silently skip.
+  }
+}
+
 export default function DashboardPage() {
   const { user } = useAuthUser();
-  const [liveBooks, setLiveBooks] = useState<LibraryBook[]>([]);
+  // Hydrate synchronously from sessionStorage so revisits paint instantly.
+  const [liveBooks, setLiveBooks] = useState<LibraryBook[]>(() => readLibraryCache() ?? []);
   const [previewBook, setPreviewBook] = useState<LibraryBook | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -180,10 +209,13 @@ export default function DashboardPage() {
         return projects.map(projectToLibraryBook);
       })
       .then((books) => {
-        if (!cancelled) setLiveBooks(books);
+        if (!cancelled) {
+          setLiveBooks(books);
+          writeLibraryCache(books);
+        }
       })
       .catch(() => {
-        if (!cancelled) setLiveBooks([]);
+        // On failure, keep whatever we hydrated from cache instead of clearing.
       });
     return () => {
       cancelled = true;
@@ -215,7 +247,11 @@ export default function DashboardPage() {
           const d = await r.json().catch(() => ({}));
           throw new Error((d as { error?: string }).error ?? `HTTP ${r.status}`);
         }
-        setLiveBooks((prev) => prev.filter((b) => b.id !== bookId));
+        setLiveBooks((prev) => {
+          const next = prev.filter((b) => b.id !== bookId);
+          writeLibraryCache(next);
+          return next;
+        });
         setPreviewBook((p) => (p?.id === bookId ? null : p));
       } catch (e) {
         window.alert(
@@ -357,6 +393,8 @@ export default function DashboardPage() {
                         fill
                         sizes="96px"
                         className="object-cover"
+                        loading="eager"
+                        priority
                       />
                     ) : (
                       <>

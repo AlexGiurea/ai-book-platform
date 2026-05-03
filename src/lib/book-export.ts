@@ -40,6 +40,22 @@ function safeFilename(input: string): string {
   );
 }
 
+/**
+ * Human-readable filename: preserves case and spaces, removes only characters
+ * that filesystems reject. Used for the user-facing download name so books
+ * arrive as "The House at the End of Every Road.pdf".
+ */
+function displayFilename(input: string): string {
+  const cleaned = input
+    // Strip characters forbidden in Windows/macOS filenames
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\.+$/, "")
+    .slice(0, 120);
+  return cleaned || "Folio Book";
+}
+
 function escapeHtml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
@@ -76,6 +92,52 @@ function wrapText(input: string, width: number): string[] {
   for (const word of words) {
     const next = current ? `${current} ${word}` : word;
     if (next.length > width && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [""];
+}
+
+/**
+ * Approximate Times-Roman per-character advance in em units. Times has
+ * highly variable advances — char-count wrapping under-fills by 15-20% on
+ * lowercase-heavy fiction. These ratios come from the standard Type-1
+ * Times-Roman AFM metrics, rounded into width buckets.
+ */
+function timesCharEm(ch: string): number {
+  if (ch === " ") return 0.25;
+  if ("ijlIft.,;:!|'`".includes(ch)) return 0.27;
+  if ('\\/-()[]{}"*+'.includes(ch)) return 0.36;
+  if ("abcdeghknopqrsuvxyz0123456789?".includes(ch)) return 0.5;
+  if ("mw".includes(ch)) return 0.78;
+  if ("MW".includes(ch)) return 0.92;
+  if ("BCDEFGHKLNOPQRSTUVXYZ&$#@%".includes(ch)) return 0.66;
+  if (/[A-Za-z]/.test(ch)) return 0.55;
+  return 0.5;
+}
+
+function timesTextWidth(text: string, fontSize: number): number {
+  let w = 0;
+  for (const ch of text) w += timesCharEm(ch) * fontSize;
+  return w;
+}
+
+/** Width-aware wrapper for body prose. Fills the line up to `maxWidthPts`. */
+function wrapTextByWidth(
+  input: string,
+  maxWidthPts: number,
+  fontSize: number
+): string[] {
+  const words = input.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (timesTextWidth(next, fontSize) > maxWidthPts && current) {
       lines.push(current);
       current = word;
     } else {
@@ -588,22 +650,16 @@ function normalParagraphLineSpecs(
   contentWidthPts: number
 ): Array<{ text: string; x: number }> {
   const bodySize = 12;
-  const lineCharsFull = bodyChars(contentWidthPts, bodySize);
-  const indentChars = indentFirstLine
-    ? Math.max(10, Math.floor(PARA_INDENT / (bodySize * 0.45)))
-    : 0;
-  const firstLineChars = Math.max(14, lineCharsFull - indentChars);
-  const firstWrap = wrapText(
-    paragraph.trim(),
-    indentFirstLine ? firstLineChars : lineCharsFull
-  );
+  const fullWidth = contentWidthPts;
+  const firstLineWidth = indentFirstLine ? fullWidth - PARA_INDENT : fullWidth;
+  const firstWrap = wrapTextByWidth(paragraph.trim(), firstLineWidth, bodySize);
   if (!firstWrap.length) return [];
   const out: Array<{ text: string; x: number }> = [];
   const firstIndentX = indentFirstLine ? PDF_MARGIN + PARA_INDENT : PDF_MARGIN;
   out.push({ text: firstWrap[0], x: firstIndentX });
   const rest = firstWrap.slice(1).join(" ").trim();
   if (rest) {
-    for (const line of wrapText(rest, lineCharsFull)) {
+    for (const line of wrapTextByWidth(rest, fullWidth, bodySize)) {
       out.push({ text: line, x: PDF_MARGIN });
     }
   }
@@ -701,12 +757,9 @@ function emitDropCapParagraph(b: PageBuilder, paragraph: string, contentWidthPts
     font: "F2",
   });
 
-  const capAdvance = approximateTextWidth([...letter].length || 1, dropSize) + 6;
+  const capAdvance = timesTextWidth(letter, dropSize) + 6;
   const textStart = xCursor + capAdvance;
-  const firstLineChars = Math.max(
-    10,
-    Math.floor((PDF_PAGE_WIDTH - PDF_MARGIN - textStart) / (bodySize * 0.48))
-  );
+  const firstLineWidth = PDF_PAGE_WIDTH - PDF_MARGIN - textStart;
   const textRest = remainder.trimStart();
   if (!textRest.length) {
     b.y = yRow - PDF_LINE_HEIGHT - DROP_CAP_ROW_LEAD;
@@ -714,7 +767,7 @@ function emitDropCapParagraph(b: PageBuilder, paragraph: string, contentWidthPts
     return;
   }
 
-  const firstWrapped = wrapText(textRest, firstLineChars);
+  const firstWrapped = wrapTextByWidth(textRest, firstLineWidth, bodySize);
   const row0 = firstWrapped[0] ?? "";
   b.draws.push({
     kind: "text",
@@ -728,8 +781,9 @@ function emitDropCapParagraph(b: PageBuilder, paragraph: string, contentWidthPts
   b.y = yRow - PDF_LINE_HEIGHT - DROP_CAP_ROW_LEAD;
 
   const tailCore = firstWrapped.slice(1).join(" ").trim();
-  const subsequentChars = bodyChars(contentWidthPts, bodySize);
-  const tailLines = tailCore ? wrapText(tailCore, subsequentChars) : [];
+  const tailLines = tailCore
+    ? wrapTextByWidth(tailCore, contentWidthPts, bodySize)
+    : [];
 
   for (const line of tailLines) {
     ensureBodySpace(b, PDF_LINE_HEIGHT);
@@ -971,10 +1025,10 @@ export async function exportBook(
   book: ExportBook,
   format: ExportFormat
 ): Promise<ExportArtifact> {
-  const base = safeFilename(book.title);
+  const display = displayFilename(book.title);
   if (format === "epub") {
     return {
-      filename: `${base}.epub`,
+      filename: `${display}.epub`,
       contentType: "application/epub+zip",
       data: await buildEpub(book),
     };
@@ -993,7 +1047,7 @@ export async function exportBook(
     }
   }
   return {
-    filename: `${base}.pdf`,
+    filename: `${display}.pdf`,
     contentType: "application/pdf",
     data: pdfData,
   };
