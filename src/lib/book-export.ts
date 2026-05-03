@@ -3,6 +3,11 @@ import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import JSZip from "jszip";
 import type { BookProject } from "@/lib/agent/types";
+import {
+  firstChapterDropCapParagraphIndex,
+  paragraphIsRedundantChapterHeading,
+  splitDropCapLeadingSpan,
+} from "@/lib/reader-opening";
 
 export type ExportFormat = "pdf" | "epub";
 
@@ -43,15 +48,25 @@ function escapeHtml(input: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Escapes parentheses for literal strings in PDF Tj ops; input should be ASCII-safe Unicode already normalized. */
 function escapePdfText(input: string): string {
   return input
     .replace(/\\/g, "\\\\")
     .replace(/\(/g, "\\(")
     .replace(/\)/g, "\\)")
+    .replace(/\r/g, " ")
+    .replace(/\n/g, " ")
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201c\u201d]/g, '"')
     .replace(/[\u2013\u2014]/g, "-")
     .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "");
+}
+
+/** Truncate for running header; full escaping happens in renderDraw. */
+function asciiHeadingClip(title: string, maxLen: number): string {
+  const t = title.replace(/\s+/g, " ").trim();
+  if (t.length <= maxLen) return t;
+  return `${t.slice(0, Math.max(0, maxLen - 3))}...`;
 }
 
 function wrapText(input: string, width: number): string[] {
@@ -69,6 +84,36 @@ function wrapText(input: string, width: number): string[] {
   }
   if (current) lines.push(current);
   return lines.length ? lines : [""];
+}
+
+function filterBodyParagraphs(
+  raw: string[],
+  chapterNumber: number,
+  chapterTitle: string
+): string[] {
+  const stripped = raw
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .filter((p) => !paragraphIsRedundantChapterHeading(p, chapterNumber, chapterTitle));
+  return stripped.length ? stripped : raw.filter((p) => p.trim());
+}
+
+function approximateTextWidth(chars: number, fontSize: number): number {
+  return chars * fontSize * 0.48;
+}
+
+function layoutTitleBlocks(title: string): { lines: string[]; fontSize: number } {
+  const trimmed = title.replace(/\s+/g, " ").trim() || "Untitled";
+  const usable = PDF_PAGE_WIDTH - PDF_MARGIN * 2;
+  for (const fontSize of [30, 26, 22, 18, 15]) {
+    const maxChars = Math.max(12, Math.floor(usable / (fontSize * 0.5)));
+    const lines = wrapText(trimmed, maxChars);
+    const fits = lines.every(
+      (line) => approximateTextWidth(line.length, fontSize) <= usable + 14
+    );
+    if (fits && lines.length <= 4) return { lines, fontSize };
+  }
+  return { lines: wrapText(trimmed, Math.max(10, Math.floor(usable / 7))), fontSize: 14 };
 }
 
 function projectToExportBook(project: BookProject): ExportBook {
@@ -186,130 +231,574 @@ async function insertCoverAfterTitlePage(
   return Buffer.from(saved);
 }
 
-type PdfTextOp = {
-  text: string;
-  x: number;
-  y: number;
-  size: number;
-};
+// ─── Minimal vector PDF page model ─────────────────────────────────────────
 
-type PdfPage = {
-  ops: PdfTextOp[];
-};
+type PdfFont = "F1" | "F2" | "F3";
 
-const PDF_PAGE_WIDTH = 419.52;
-const PDF_PAGE_HEIGHT = 595.32;
-const PDF_MARGIN_LEFT = 50.4;
-const PDF_BODY_TOP = 533.7;
-const PDF_BODY_BOTTOM = 78.3;
-const PDF_LINE_HEIGHT = 20.7;
-const PDF_FIRST_LINE_INDENT = 36;
+type PdfDrawOp =
+  | { kind: "text"; text: string; x: number; y: number; size: number; font: PdfFont }
+  | {
+      kind: "line";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      width: number;
+      r: number;
+      g: number;
+      b: number;
+    }
+  | {
+      kind: "ornament";
+      cx: number;
+      cy: number;
+      r: number;
+      g: number;
+      b: number;
+    };
 
-function centeredText(text: string, size: number): number {
-  // Times-Roman is proportional; this approximation is intentionally tuned for
-  // title/chapter pages rather than exact typesetting metrics.
-  return Math.max(36, (PDF_PAGE_WIDTH - text.length * size * 0.46) / 2);
+type PdfPage = { draws: PdfDrawOp[]; isChapterOpener?: boolean };
+
+// 6 × 9 inch trade paperback trim (industry standard for trade fiction).
+const PDF_PAGE_WIDTH = 432;
+const PDF_PAGE_HEIGHT = 648;
+// Generous margins matched to a printed paperback (≈0.75" outside, 0.85" top/bottom).
+const PDF_MARGIN = 54;
+/** First prose baseline after on-page chapter header block (chapter opening pages). */
+const FIRST_CHAPTER_BODY_TOP = 470;
+/** First baseline on continuation spreads (below running header band) */
+const CONTINUATION_BODY_TOP = 562;
+const PDF_BODY_BOTTOM = 84;
+const PDF_LINE_HEIGHT = 16.5;
+/** Extra vertical slack after the ornamental opening row */
+const DROP_CAP_ROW_LEAD = 24;
+const PARA_GAP = PDF_LINE_HEIGHT * 0.18;
+const PARA_INDENT = 24;
+
+/** Subtle warm-charcoal accent for ornament rules — gentler than pure ember. */
+const TITLE_ACCENT_LINE = [0.42, 0.30, 0.18] as const;
+
+function bodyChars(lineWidthPts: number, fontSize: number): number {
+  return Math.max(18, Math.floor(lineWidthPts / (fontSize * 0.48)));
 }
 
-function pdfTextOp({ text, x, y, size }: PdfTextOp): string {
-  return `BT\n/F1 ${size} Tf\n${x.toFixed(1)} ${y.toFixed(1)} Td\n(${escapePdfText(text)}) Tj\nET`;
+function centeredX(line: string, fontSize: number): number {
+  const w = approximateTextWidth(line.length, fontSize);
+  return Math.max(PDF_MARGIN, (PDF_PAGE_WIDTH - w) / 2);
 }
 
-function pageNumberOp(index: number): PdfTextOp {
-  return { text: String(index), x: PDF_MARGIN_LEFT, y: 556.8, size: 10 };
+function pdfTextTmOp(
+  fid: PdfFont,
+  size: number,
+  x: number,
+  y: number,
+  textRaw: string,
+  fill?: readonly [number, number, number]
+): string {
+  const safe = escapePdfText(textRaw);
+  const out: string[] = ["BT"];
+  if (fill) {
+    out.push(`${fill[0].toFixed(2)} ${fill[1].toFixed(2)} ${fill[2].toFixed(2)} rg`);
+  }
+  out.push(
+    `/${fid} ${size.toFixed(2)} Tf`,
+    `1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm`,
+    `(${safe}) Tj`,
+    "ET"
+  );
+  return out.join("\n");
 }
 
-function titlePage(book: ExportBook, pageIndex: number): PdfPage {
-  return {
-    ops: [
-      pageNumberOp(pageIndex),
-      {
-        text: book.title,
-        x: centeredText(book.title, 36),
-        y: 407.8,
-        size: 36,
-      },
-      {
-        text: book.author,
-        x: centeredText(book.author, 28),
-        y: 353.1,
-        size: 28,
-      },
-    ],
-  };
+function renderDraw(op: PdfDrawOp): string {
+  if (op.kind === "line") {
+    return [
+      "q",
+      `${op.width.toFixed(3)} w`,
+      `${op.r.toFixed(2)} ${op.g.toFixed(2)} ${op.b.toFixed(2)} RG`,
+      `${op.x1.toFixed(2)} ${op.y1.toFixed(2)} m`,
+      `${op.x2.toFixed(2)} ${op.y2.toFixed(2)} l`,
+      "S",
+      "Q",
+    ].join("\n");
+  }
+  if (op.kind === "ornament") {
+    // A thin diamond-and-rule ornament (◆) drawn from filled triangles for portability.
+    const half = 3.2;
+    const ruleHalf = 36;
+    const lines: string[] = [
+      "q",
+      `${op.r.toFixed(2)} ${op.g.toFixed(2)} ${op.b.toFixed(2)} RG`,
+      `${op.r.toFixed(2)} ${op.g.toFixed(2)} ${op.b.toFixed(2)} rg`,
+      "0.6 w",
+      // left rule
+      `${(op.cx - ruleHalf).toFixed(2)} ${op.cy.toFixed(2)} m`,
+      `${(op.cx - half - 6).toFixed(2)} ${op.cy.toFixed(2)} l`,
+      "S",
+      // right rule
+      `${(op.cx + half + 6).toFixed(2)} ${op.cy.toFixed(2)} m`,
+      `${(op.cx + ruleHalf).toFixed(2)} ${op.cy.toFixed(2)} l`,
+      "S",
+      // diamond
+      `${op.cx.toFixed(2)} ${(op.cy + half).toFixed(2)} m`,
+      `${(op.cx + half).toFixed(2)} ${op.cy.toFixed(2)} l`,
+      `${op.cx.toFixed(2)} ${(op.cy - half).toFixed(2)} l`,
+      `${(op.cx - half).toFixed(2)} ${op.cy.toFixed(2)} l`,
+      "h",
+      "f",
+      "Q",
+    ];
+    return lines.join("\n");
+  }
+  return pdfTextTmOp(op.font, op.size, op.x, op.y, op.text);
 }
 
-function blankPage(pageIndex: number): PdfPage {
-  return { ops: [pageNumberOp(pageIndex)] };
+function footerDrawPrintPage(n: number): PdfDrawOp {
+  const txt = String(n);
+  const w = approximateTextWidth(txt.length, 10);
+  const x = (PDF_PAGE_WIDTH - w) / 2;
+  return { kind: "text", text: txt, x, y: 48, size: 10, font: "F1" };
 }
 
-function chapterTitlePage(chapter: ExportBook["chapters"][number], pageIndex: number): PdfPage {
-  const title = chapter.title;
-  return {
-    ops: [
-      pageNumberOp(pageIndex),
-      {
-        text: title,
-        x: centeredText(title, 22),
-        y: 313.9,
-        size: 22,
-      },
-    ],
-  };
+/** Small-caps style header: book title on verso (even), chapter title on recto (odd). */
+function runningHeaderDraws(
+  bookTitle: string,
+  chapterTitle: string,
+  pageSeq: number
+): PdfDrawOp[] {
+  const isRecto = pageSeq % 2 === 1; // odd seq -> right-hand page
+  const raw = isRecto ? chapterTitle : bookTitle;
+  const clipped = asciiHeadingClip(raw, 60).toUpperCase();
+  const size = 8.5;
+  const w = approximateTextWidth(clipped.length, size);
+  const cx = (PDF_PAGE_WIDTH - w) / 2;
+  return [
+    {
+      kind: "text",
+      text: clipped,
+      x: cx,
+      y: PDF_PAGE_HEIGHT - 44,
+      size,
+      font: "F1",
+    },
+  ];
 }
 
-function bodyPages(chapter: ExportBook["chapters"][number], firstPageIndex: number): PdfPage[] {
-  const pages: PdfPage[] = [];
-  let ops: PdfTextOp[] = [pageNumberOp(firstPageIndex)];
-  let pageIndex = firstPageIndex;
-  let y = PDF_BODY_TOP;
+function synopsisLines(syn: string): string[] {
+  const one = syn.replace(/\s+/g, " ").trim();
+  if (!one) return [];
+  return wrapText(one, 70).slice(0, 3);
+}
 
-  const startNewPage = () => {
-    pages.push({ ops });
-    pageIndex += 1;
-    ops = [pageNumberOp(pageIndex)];
-    y = PDF_BODY_TOP;
-  };
+/** Title leaf: centered block, ornamental rules, author and synopsis — never numbered. */
+function titlePage(book: ExportBook): PdfPage {
+  const draws: PdfDrawOp[] = [];
 
-  const paragraphs = chapter.content
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
+  // Top thin rule with diamond — classic title-page motif
+  draws.push({
+    kind: "ornament",
+    cx: PDF_PAGE_WIDTH / 2,
+    cy: PDF_PAGE_HEIGHT - 152,
+    r: TITLE_ACCENT_LINE[0],
+    g: TITLE_ACCENT_LINE[1],
+    b: TITLE_ACCENT_LINE[2],
+  });
 
-  for (const paragraph of paragraphs) {
-    const firstLineWidth = 52;
-    const continuationWidth = 60;
-    const firstPass = wrapText(paragraph, firstLineWidth);
-    const lines =
-      firstPass.length <= 1
-        ? firstPass
-        : [
-            firstPass[0],
-            ...wrapText(firstPass.slice(1).join(" "), continuationWidth),
-          ];
+  const { lines, fontSize } = layoutTitleBlocks(book.title);
+  const lineLead = fontSize * 1.36;
+  const blockHalf = ((lines.length - 1) * lineLead) / 2 + fontSize / 3;
+  let y = PDF_PAGE_HEIGHT * 0.58 + blockHalf;
 
-    lines.forEach((line, lineIndex) => {
-      if (y < PDF_BODY_BOTTOM) startNewPage();
-      ops.push({
-        text: line,
-        x: lineIndex === 0 ? PDF_MARGIN_LEFT + PDF_FIRST_LINE_INDENT : PDF_MARGIN_LEFT,
-        y,
-        size: 12,
-      });
-      y -= PDF_LINE_HEIGHT;
+  for (const line of lines) {
+    draws.push({
+      kind: "text",
+      text: line.toUpperCase(),
+      x: centeredX(line.toUpperCase(), fontSize),
+      y,
+      size: fontSize,
+      font: "F2",
     });
+    y -= lineLead;
   }
 
-  pages.push({ ops });
-  return pages;
+  // Author line with leading "by"
+  const authorLine = book.author.trim() || "Folio";
+  y -= 50;
+  const byLabel = "by";
+  draws.push({
+    kind: "text",
+    text: byLabel,
+    x: centeredX(byLabel, 11),
+    y,
+    size: 11,
+    font: "F3",
+  });
+  y -= 22;
+  draws.push({
+    kind: "text",
+    text: authorLine,
+    x: centeredX(authorLine, 14),
+    y,
+    size: 14,
+    font: "F1",
+  });
+
+  // Synopsis block, italic, narrow
+  y -= 56;
+  for (const ln of synopsisLines(book.synopsis)) {
+    draws.push({
+      kind: "text",
+      text: ln,
+      x: centeredX(ln, 10.5),
+      y,
+      size: 10.5,
+      font: "F3",
+    });
+    y -= 14.5;
+  }
+
+  // Bottom diamond ornament
+  draws.push({
+    kind: "ornament",
+    cx: PDF_PAGE_WIDTH / 2,
+    cy: 110,
+    r: TITLE_ACCENT_LINE[0],
+    g: TITLE_ACCENT_LINE[1],
+    b: TITLE_ACCENT_LINE[2],
+  });
+
+  return { draws };
 }
 
-function buildPdf(book: ExportBook): Buffer {
-  const pages: PdfPage[] = [titlePage(book, 0), blankPage(1)];
-  for (const chapter of book.chapters) {
-    pages.push(chapterTitlePage(chapter, pages.length));
-    pages.push(...bodyPages(chapter, pages.length));
+/** Copyright / colophon page — small italic note centered low on the page. */
+function colophonPage(book: ExportBook): PdfPage {
+  const draws: PdfDrawOp[] = [];
+  const year = new Date().getFullYear();
+  const lines: Array<{ text: string; size: number; font: PdfFont }> = [
+    { text: book.title, size: 12, font: "F2" },
+    { text: `© ${year} ${book.author || "Folio"}`, size: 10, font: "F1" },
+    { text: "All rights reserved.", size: 10, font: "F3" },
+    { text: "Generated with Folio — folio.app", size: 9.5, font: "F3" },
+  ];
+  let y = 200;
+  for (const ln of lines) {
+    draws.push({
+      kind: "text",
+      text: ln.text,
+      x: centeredX(ln.text, ln.size),
+      y,
+      size: ln.size,
+      font: ln.font,
+    });
+    y -= ln.size * 1.6 + 4;
   }
+  return { draws };
+}
+
+function blankPage(): PdfPage {
+  return { draws: [] };
+}
+
+function mathChapterTitleFont(title: string): number {
+  if (title.length > 72) return 14;
+  if (title.length > 54) return 15;
+  if (title.length > 44) return 16;
+  return 17;
+}
+
+function wrapChapterTitleLines(title: string, fontSize: number): string[] {
+  const usable = PDF_PAGE_WIDTH - PDF_MARGIN * 2 - 32;
+  const maxChars = Math.max(14, Math.floor(usable / (fontSize * 0.5)));
+  return wrapText(title.replace(/\s+/g, " ").trim(), maxChars);
+}
+
+function chapterOpenHeaderOps(chapter: ExportBook["chapters"][number]): PdfDrawOp[] {
+  const draws: PdfDrawOp[] = [];
+  // Roman numerals look more book-like for chapter labels
+  const ROMAN = (n: number): string => {
+    const map: Array<[number, string]> = [
+      [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"],
+      [100, "C"], [90, "XC"], [50, "L"], [40, "XL"],
+      [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
+    ];
+    let r = "";
+    let v = n;
+    for (const [k, s] of map) {
+      while (v >= k) { r += s; v -= k; }
+    }
+    return r || String(n);
+  };
+  const chapLabel = `CHAPTER ${ROMAN(chapter.number)}`;
+  const labelSize = 10.25;
+  const titleSize = mathChapterTitleFont(chapter.title);
+  let chapY = 596;
+  draws.push({
+    kind: "text",
+    text: chapLabel,
+    x: centeredX(chapLabel, labelSize),
+    y: chapY,
+    size: labelSize,
+    font: "F2",
+  });
+
+  chapY -= 28;
+  for (const line of wrapChapterTitleLines(chapter.title, titleSize)) {
+    draws.push({
+      kind: "text",
+      text: line,
+      x: centeredX(line, titleSize),
+      y: chapY,
+      size: titleSize,
+      font: "F3",
+    });
+    chapY -= titleSize * 1.36 + 4;
+  }
+
+  // Ornamental diamond rule below chapter title
+  draws.push({
+    kind: "ornament",
+    cx: PDF_PAGE_WIDTH / 2,
+    cy: chapY + 2,
+    r: TITLE_ACCENT_LINE[0],
+    g: TITLE_ACCENT_LINE[1],
+    b: TITLE_ACCENT_LINE[2],
+  });
+  return draws;
+}
+
+function measureDropCapFirstRowHeight(): number {
+  return PDF_LINE_HEIGHT + DROP_CAP_ROW_LEAD;
+}
+
+function normalParagraphLineSpecs(
+  paragraph: string,
+  indentFirstLine: boolean,
+  contentWidthPts: number
+): Array<{ text: string; x: number }> {
+  const bodySize = 12;
+  const lineCharsFull = bodyChars(contentWidthPts, bodySize);
+  const indentChars = indentFirstLine
+    ? Math.max(10, Math.floor(PARA_INDENT / (bodySize * 0.45)))
+    : 0;
+  const firstLineChars = Math.max(14, lineCharsFull - indentChars);
+  const firstWrap = wrapText(
+    paragraph.trim(),
+    indentFirstLine ? firstLineChars : lineCharsFull
+  );
+  if (!firstWrap.length) return [];
+  const out: Array<{ text: string; x: number }> = [];
+  const firstIndentX = indentFirstLine ? PDF_MARGIN + PARA_INDENT : PDF_MARGIN;
+  out.push({ text: firstWrap[0], x: firstIndentX });
+  const rest = firstWrap.slice(1).join(" ").trim();
+  if (rest) {
+    for (const line of wrapText(rest, lineCharsFull)) {
+      out.push({ text: line, x: PDF_MARGIN });
+    }
+  }
+  return out;
+}
+
+type PageBuilder = {
+  pages: PdfPage[];
+  draws: PdfDrawOp[];
+  seq: number;
+  y: number;
+  chapterTitle: string;
+  bookTitle: string;
+  isOpenerPage: boolean;
+};
+
+function flushPage(b: PageBuilder): void {
+  if (!b.draws.length) return;
+  b.draws.push(footerDrawPrintPage(b.seq));
+  const isOpener = b.isOpenerPage;
+  b.seq += 1;
+  b.pages.push({ draws: b.draws, isChapterOpener: isOpener });
+  b.draws = [];
+  b.isOpenerPage = false;
+}
+
+function startContinuation(b: PageBuilder): void {
+  for (const op of runningHeaderDraws(b.bookTitle, b.chapterTitle, b.seq)) {
+    b.draws.push(op);
+  }
+  b.y = CONTINUATION_BODY_TOP;
+}
+
+function ensureBodySpace(b: PageBuilder, neededBelowBaseline: number): void {
+  if (b.y - neededBelowBaseline >= PDF_BODY_BOTTOM) return;
+  flushPage(b);
+  startContinuation(b);
+}
+
+function emitNormalParagraph(
+  b: PageBuilder,
+  paragraph: string,
+  indentFirstLine: boolean,
+  contentWidthPts: number
+): void {
+  const bodySize = 12;
+  const specs = normalParagraphLineSpecs(paragraph, indentFirstLine, contentWidthPts);
+  for (const row of specs) {
+    ensureBodySpace(b, PDF_LINE_HEIGHT);
+    b.draws.push({
+      kind: "text",
+      text: row.text,
+      x: row.x,
+      y: b.y,
+      size: bodySize,
+      font: "F1",
+    });
+    b.y -= PDF_LINE_HEIGHT;
+  }
+  b.y -= PARA_GAP;
+}
+
+function emitDropCapParagraph(b: PageBuilder, paragraph: string, contentWidthPts: number): void {
+  const part = splitDropCapLeadingSpan(paragraph);
+  if (!part) {
+    emitNormalParagraph(b, paragraph, false, contentWidthPts);
+    return;
+  }
+
+  ensureBodySpace(b, measureDropCapFirstRowHeight());
+  const yRow = b.y;
+  const bodySize = 12;
+  const dropSize = 34;
+  let xCursor = PDF_MARGIN;
+  const { prefix, letter, remainder } = part;
+
+  if (prefix.trim()) {
+    b.draws.push({
+      kind: "text",
+      text: prefix,
+      x: xCursor,
+      y: yRow,
+      size: bodySize,
+      font: "F1",
+    });
+    xCursor += approximateTextWidth([...prefix].length, bodySize);
+  }
+
+  b.draws.push({
+    kind: "text",
+    text: letter,
+    x: xCursor,
+    y: yRow + 5,
+    size: dropSize,
+    font: "F2",
+  });
+
+  const capAdvance = approximateTextWidth([...letter].length || 1, dropSize) + 6;
+  const textStart = xCursor + capAdvance;
+  const firstLineChars = Math.max(
+    10,
+    Math.floor((PDF_PAGE_WIDTH - PDF_MARGIN - textStart) / (bodySize * 0.48))
+  );
+  const textRest = remainder.trimStart();
+  if (!textRest.length) {
+    b.y = yRow - PDF_LINE_HEIGHT - DROP_CAP_ROW_LEAD;
+    b.y -= PARA_GAP;
+    return;
+  }
+
+  const firstWrapped = wrapText(textRest, firstLineChars);
+  const row0 = firstWrapped[0] ?? "";
+  b.draws.push({
+    kind: "text",
+    text: row0,
+    x: textStart,
+    y: yRow,
+    size: bodySize,
+    font: "F1",
+  });
+
+  b.y = yRow - PDF_LINE_HEIGHT - DROP_CAP_ROW_LEAD;
+
+  const tailCore = firstWrapped.slice(1).join(" ").trim();
+  const subsequentChars = bodyChars(contentWidthPts, bodySize);
+  const tailLines = tailCore ? wrapText(tailCore, subsequentChars) : [];
+
+  for (const line of tailLines) {
+    ensureBodySpace(b, PDF_LINE_HEIGHT);
+    b.draws.push({
+      kind: "text",
+      text: line,
+      x: PDF_MARGIN,
+      y: b.y,
+      size: bodySize,
+      font: "F1",
+    });
+    b.y -= PDF_LINE_HEIGHT;
+  }
+  b.y -= PARA_GAP;
+}
+
+function composeChapterPages(
+  chapter: ExportBook["chapters"][number],
+  bookTitle: string,
+  startSeq: number
+): PdfPage[] {
+  const rawParas = chapter.content.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const bodyParas = filterBodyParagraphs(rawParas, chapter.number, chapter.title);
+  const dropIx = firstChapterDropCapParagraphIndex(
+    bodyParas,
+    true,
+    chapter.number,
+    chapter.title
+  );
+
+  const contentWidthPts = PDF_PAGE_WIDTH - PDF_MARGIN * 2;
+  const b: PageBuilder = {
+    pages: [],
+    draws: [...chapterOpenHeaderOps(chapter)],
+    seq: startSeq,
+    y: FIRST_CHAPTER_BODY_TOP,
+    chapterTitle: chapter.title,
+    bookTitle,
+    isOpenerPage: true,
+  };
+
+  let paraIndex = 0;
+  for (const paragraph of bodyParas) {
+    if (!paragraph.trim()) {
+      paraIndex++;
+      continue;
+    }
+    const indentThis = paraIndex > 0;
+    const isDrop = paraIndex === dropIx && dropIx >= 0;
+    if (isDrop) emitDropCapParagraph(b, paragraph, contentWidthPts);
+    else emitNormalParagraph(b, paragraph, indentThis, contentWidthPts);
+    paraIndex++;
+  }
+
+  flushPage(b);
+  return b.pages;
+}
+
+function bodyPagesPdf(book: ExportBook): PdfPage[] {
+  let seq = 1;
+  const out: PdfPage[] = [];
+  for (const ch of book.chapters) {
+    const pages = composeChapterPages(ch, book.title, seq);
+    out.push(...pages);
+    seq += pages.length;
+  }
+  return out;
+}
+
+export function buildPdf(book: ExportBook): Buffer {
+  const pages: PdfPage[] = [
+    titlePage(book),
+    colophonPage(book),
+    blankPage(),
+    ...bodyPagesPdf(book),
+  ];
+  const resources =
+    "<< /Font << " +
+    "/F1 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >> " +
+    "/F2 << /Type /Font /Subtype /Type1 /BaseFont /Times-Bold >> " +
+    "/F3 << /Type /Font /Subtype /Type1 /BaseFont /Times-Italic >> " +
+    ">> >>";
 
   const objects: string[] = [
     "<< /Type /Catalog /Pages 2 0 R >>",
@@ -319,9 +808,9 @@ function buildPdf(book: ExportBook): Buffer {
   pages.forEach((page, index) => {
     const pageObjectNumber = 3 + index * 2;
     const contentObjectNumber = pageObjectNumber + 1;
-    const content = page.ops.map(pdfTextOp).join("\n");
+    const content = page.draws.map(renderDraw).join("\n") || " ";
     objects.push(
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PDF_PAGE_WIDTH} ${PDF_PAGE_HEIGHT}] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >> >> >> /Contents ${contentObjectNumber} 0 R >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PDF_PAGE_WIDTH} ${PDF_PAGE_HEIGHT}] /Resources ${resources} /Contents ${contentObjectNumber} 0 R >>`,
       `<< /Length ${Buffer.byteLength(content, "utf8")} >>\nstream\n${content}\nendstream`
     );
   });
@@ -400,23 +889,55 @@ async function buildEpub(book: ExportBook): Promise<Buffer> {
   );
 
   for (const file of chapterFiles) {
-    const paragraphs = file.chapter.content
+    const rawParagraphs = file.chapter.content
       .split(/\n{2,}/)
       .map((paragraph) => paragraph.trim())
-      .filter(Boolean)
-      .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+      .filter(Boolean);
+    const paragraphs = filterBodyParagraphs(
+      rawParagraphs,
+      file.chapter.number,
+      file.chapter.title
+    );
+    const dropIx = firstChapterDropCapParagraphIndex(
+      paragraphs,
+      true,
+      file.chapter.number,
+      file.chapter.title
+    );
+    const parasHtml = paragraphs
+      .map((para, i) => {
+        const isDrop = i === dropIx && dropIx >= 0;
+        const classes = isDrop
+          ? "paragraph opener drop-cap"
+          : i > 0
+            ? "paragraph indent"
+            : "paragraph opener";
+        return `<p class="${classes}">${escapeHtml(para)}</p>`;
+      })
       .join("\n      ");
+
     zip.file(
       `OEBPS/${file.href}`,
       `<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <title>${escapeHtml(file.chapter.title)}</title>
-    <style>body{font-family:serif;line-height:1.6;margin:2rem;} h1{font-size:1.6rem;}</style>
+    <style>
+      body { font-family: Georgia, serif; line-height: 1.62; margin: 2rem; text-align: justify; hyphens: auto; }
+      h1.chapt { font-size: 1.05rem; font-weight: bold; letter-spacing: 0.12em; text-transform: uppercase; text-align: center; margin: 3rem 0 0.5rem; border-bottom: none; }
+      .chapt-title { font-size: 1.5rem; font-weight: bold; text-align: center; margin: 0 2rem 1.75rem; }
+      hr.chapt-rule { width: 36%; margin: 0 auto 2.25rem; border: none; border-top: 0.06em solid #a67c52; }
+      p.paragraph + p.paragraph { margin-top: 0.35rem; }
+      p.opener { text-indent: 0; }
+      p.indent { text-indent: 1.25em; }
+      p.drop-cap::first-letter { float: left; font-weight: bold; font-size: 3.2em; line-height: 0.72; padding: 0.05em 0.1em 0 0; margin-top: 0.08em; }
+    </style>
   </head>
   <body>
-    <h1>${escapeHtml(file.chapter.title)}</h1>
-    ${paragraphs}
+    <h1 class="chapt">Chapter ${file.chapter.number}</h1>
+    <div class="chapt-title">${escapeHtml(file.chapter.title)}</div>
+    <hr class="chapt-rule"/>
+      ${parasHtml}
   </body>
 </html>`
     );
