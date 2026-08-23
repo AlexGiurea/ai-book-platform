@@ -25,8 +25,8 @@ export interface PlanDefinition {
   };
 }
 
-export const FREE_PLAN_MODEL = "gpt-5.4-mini";
-export const PRO_PLAN_MODEL = "gpt-5.5";
+export const FREE_PLAN_MODEL = "gpt-5.6-luna";
+export const PRO_PLAN_MODEL = "gpt-5.6-sol";
 
 export const DEFAULT_SIGNUP_PLAN: SubscriptionPlan = "free";
 export const FALLBACK_PROJECT_PLAN: SubscriptionPlan = DEFAULT_SIGNUP_PLAN;
@@ -38,7 +38,7 @@ export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
     price: "$0",
     cadence: "/ month",
     model: FREE_PLAN_MODEL,
-    modelLabel: "GPT-5.4 mini",
+    modelLabel: "GPT-5.6 Luna",
     summary:
       "A focused way to try Folio, draft shorter books, and keep a private library before upgrading.",
     bestFor: "Exploring ideas, sample projects, and early outlines",
@@ -67,7 +67,7 @@ export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
     cadence: "/ month",
     badge: "Current beta default",
     model: PRO_PLAN_MODEL,
-    modelLabel: "GPT-5.5",
+    modelLabel: "GPT-5.6 Sol",
     summary:
       "The full creative engine for serious manuscripts, richer planning, longer writing runs, and publishing polish.",
     bestFor: "Authors building complete books and repeatable publishing workflows",
