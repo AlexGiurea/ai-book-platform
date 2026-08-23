@@ -1,50 +1,129 @@
 import { zodTextFormat } from "openai/helpers/zod";
-import { getModelName, getOpenAIClient } from "./openai-client";
+import {
+  buildResponsesCallExtras,
+  extractResponseUsage,
+  getModelForProject,
+  getOpenAIClient,
+  getProjectPipelineConfig,
+} from "./openai-client";
 import { store } from "./context-store";
 import { toGenerationCancelled } from "./generation-errors";
 import { BatchOutputSchema } from "./schemas";
 import { buildWriterSystemPrompt, buildWriterUserPrompt } from "./prompts";
 import { stripEmDashes } from "./sanitize";
-import type { BatchBlueprint, StoryBible } from "./types";
+import {
+  normalizeStateDelta,
+  rebuildStoryStateBeforeBatch,
+} from "./story-state";
+import type { BatchBlueprint, StateDelta, StoryBible } from "./types";
 
-const RECENT_PROSE_COUNT = 2;         // include last N batches with full prose
-const ROLLING_SUMMARY_COUNT = 8;      // older batches contributing summaries only
-
+const RECENT_PROSE_COUNT = 1;
+const ROLLING_SUMMARY_COUNT = 8;
+/** Room for ~2,800 words + metadata + reasoning on GPT-5.6. */
+const WRITER_MAX_OUTPUT_TOKENS = 8000;
 
 export interface BatchWriteResult {
   wordsInBatch: number;
   openThreads: string;
+  stateDelta: StateDelta;
   durationMs: number;
+  skipped?: boolean;
 }
 
 export class WriterAgent {
   async writeBatch(
     projectId: string,
     blueprint: BatchBlueprint,
-    lastOpenThreads: string | undefined
+    options: {
+      critiqueFixes?: string;
+      replaceBatchNumber?: number;
+      revisionKey?: string;
+    } = {}
   ): Promise<BatchWriteResult> {
     const project = await store.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
     if (!project.bible) throw new Error("Project has no book blueprint — plan first");
 
     const bible: StoryBible = project.bible;
+    const config = getProjectPipelineConfig(project);
+    const role = options.replaceBatchNumber != null ? "revise" : "writer";
+    const model = getModelForProject(project, role);
     const client = getOpenAIClient();
-    const model = getModelName(project.plan);
 
-    const allBatches = project.batches;
-    const recentBatches = allBatches.slice(-RECENT_PROSE_COUNT);
-    const olderSummaries = allBatches
-      .slice(0, Math.max(0, allBatches.length - RECENT_PROSE_COUNT))
+    // Idempotent write: if absolute batch already exists and this is not a revise, skip model.
+    if (options.replaceBatchNumber == null) {
+      const existing = project.batches.find((b) => b.batchNumber === blueprint.number);
+      if (existing) {
+        await store.rebuildStoryState(projectId);
+        return {
+          wordsInBatch: existing.wordCount,
+          openThreads: existing.openThreads ?? "",
+          stateDelta: existing.stateDelta ?? {
+            newFacts: [],
+            characterUpdates: [],
+            threadsOpened: [],
+            threadsResolved: [],
+          },
+          durationMs: 0,
+          skipped: true,
+        };
+      }
+    }
+
+    // Idempotent revise: matching revision key already applied.
+    if (options.replaceBatchNumber != null && options.revisionKey) {
+      const existing = project.batches.find(
+        (b) => b.batchNumber === options.replaceBatchNumber
+      );
+      if (existing?.lastRevisionKey === options.revisionKey) {
+        await store.rebuildStoryState(projectId);
+        return {
+          wordsInBatch: existing.wordCount,
+          openThreads: existing.openThreads ?? "",
+          stateDelta: existing.stateDelta ?? {
+            newFacts: [],
+            characterUpdates: [],
+            threadsOpened: [],
+            threadsResolved: [],
+          },
+          durationMs: 0,
+          skipped: true,
+        };
+      }
+    }
+
+    // Context: only batches strictly before the target batch number.
+    const targetNumber =
+      options.replaceBatchNumber != null
+        ? options.replaceBatchNumber
+        : blueprint.number;
+    const priorBatches = project.batches
+      .filter((b) => b.batchNumber < targetNumber)
+      .sort((a, b) => a.batchNumber - b.batchNumber);
+    const recentBatches = priorBatches.slice(-RECENT_PROSE_COUNT);
+    const olderSummaries = priorBatches
+      .slice(0, Math.max(0, priorBatches.length - RECENT_PROSE_COUNT))
       .slice(-ROLLING_SUMMARY_COUNT);
+
+    // Story state immediately before this batch (from deltas, not live merge).
+    const storyState = rebuildStoryStateBeforeBatch(
+      project.batches.map((b) => ({
+        batchNumber: b.batchNumber,
+        stateDelta: b.stateDelta,
+      })),
+      targetNumber
+    );
 
     const isFinalBatch = blueprint.number >= bible.totalBatches;
 
-    await store.appendEvent(projectId, {
-      type: "batch_start",
-      batchNumber: blueprint.number,
-      totalWords: project.totalWords,
-      model,
-    });
+    if (options.replaceBatchNumber == null) {
+      await store.appendEvent(projectId, {
+        type: "batch_start",
+        batchNumber: blueprint.number,
+        totalWords: project.totalWords,
+        model,
+      });
+    }
 
     const instructions = buildWriterSystemPrompt();
     const input = buildWriterUserPrompt({
@@ -53,15 +132,22 @@ export class WriterAgent {
       blueprint,
       recentBatches,
       recentSummaries: olderSummaries,
-      lastOpenThreads,
+      storyState,
       isFinalBatch,
       totalWords: project.totalWords,
       targetWords: project.targetWords,
+      critiqueFixes: options.critiqueFixes,
     });
 
     await store.assertNotCancelled(projectId);
     const genSignal = store.getGenerationSignal(projectId);
     const started = Date.now();
+    const extras = buildResponsesCallExtras({
+      projectId,
+      role,
+      model,
+      config,
+    });
     let response;
     try {
       response = await client.responses.parse(
@@ -69,6 +155,8 @@ export class WriterAgent {
           model,
           instructions,
           input,
+          max_output_tokens: WRITER_MAX_OUTPUT_TOKENS,
+          ...extras,
           text: {
             format: zodTextFormat(BatchOutputSchema, "batch_output"),
           },
@@ -82,36 +170,102 @@ export class WriterAgent {
     }
     const durationMs = Date.now() - started;
 
+    const usage = extractResponseUsage(response);
+    await store.recordLlmUsage(projectId, role, model, {
+      ...usage,
+      operation: options.replaceBatchNumber != null ? "revise" : "write",
+      durationMs,
+      requestId: usage.requestId,
+    });
+
     const parsed = response.output_parsed;
     if (!parsed) throw new Error(`Writer returned no parsed output (batch ${blueprint.number})`);
 
-    // Hard-enforce the zero-em-dash rule. The prompt forbids them but models
-    // slip; this guarantees nothing dash-based reaches the stored manuscript.
     const cleanProse = stripEmDashes(parsed.prose);
     const cleanSummary = stripEmDashes(parsed.summary);
     const cleanOpenThreads = stripEmDashes(parsed.openThreads);
+    const stateDelta =
+      normalizeStateDelta(
+        {
+          newFacts: (parsed.stateDelta?.newFacts ?? []).map(stripEmDashes),
+          characterUpdates: (parsed.stateDelta?.characterUpdates ?? []).map((u) => ({
+            name: stripEmDashes(u.name),
+            status: stripEmDashes(u.status),
+          })),
+          threadsOpened: (parsed.stateDelta?.threadsOpened ?? []).map((t) => ({
+            id: stripEmDashes(t.id),
+            description: stripEmDashes(t.description),
+          })),
+          threadsResolved: (parsed.stateDelta?.threadsResolved ?? []).map((t) => ({
+            id: stripEmDashes(t.id),
+          })),
+        },
+        targetNumber
+      ) ?? {
+        newFacts: [],
+        characterUpdates: [],
+        threadsOpened: [],
+        threadsResolved: [],
+      };
 
-    const appended = await store.appendBatch(projectId, {
-      prose: cleanProse,
-      chapterNumber: blueprint.chapterNumber,
-      chapterTitle: blueprint.chapterTitle,
-      chapterSummary: cleanSummary,
-    });
+    let appended;
+    let applied = true;
+    if (options.replaceBatchNumber != null) {
+      const result = await store.replaceBatch(projectId, options.replaceBatchNumber, {
+        prose: cleanProse,
+        chapterSummary: cleanSummary,
+        openThreads: cleanOpenThreads,
+        stateDelta,
+        revisionKey: options.revisionKey,
+      });
+      appended = result?.batch;
+      applied = result?.applied ?? false;
+    } else {
+      const result = await store.appendBatch(projectId, {
+        batchNumber: blueprint.number,
+        prose: cleanProse,
+        chapterNumber: blueprint.chapterNumber,
+        chapterTitle: blueprint.chapterTitle,
+        chapterSummary: cleanSummary,
+        openThreads: cleanOpenThreads,
+        stateDelta,
+      });
+      appended = result?.batch;
+      applied = result?.inserted ?? false;
+    }
+
+    await store.rebuildStoryState(projectId);
 
     const updated = await store.getProject(projectId);
-    await store.appendEvent(projectId, {
-      type: "batch_complete",
-      batchNumber: blueprint.number,
-      wordsInBatch: appended?.wordCount ?? 0,
-      totalWords: updated?.totalWords ?? 0,
-      durationMs,
-      model,
-    });
+    if (options.replaceBatchNumber != null) {
+      if (applied) {
+        await store.appendEvent(projectId, {
+          type: "batch_revised",
+          batchNumber: blueprint.number,
+          chapterNumber: blueprint.chapterNumber,
+          wordsInBatch: appended?.wordCount ?? 0,
+          totalWords: updated?.totalWords ?? 0,
+          durationMs,
+          model,
+        });
+      }
+    } else if (applied) {
+      await store.appendEvent(projectId, {
+        type: "batch_complete",
+        batchNumber: blueprint.number,
+        wordsInBatch: appended?.wordCount ?? 0,
+        totalWords: updated?.totalWords ?? 0,
+        durationMs,
+        model,
+      });
+    }
 
     return {
       wordsInBatch: appended?.wordCount ?? 0,
       openThreads: cleanOpenThreads,
+      stateDelta,
       durationMs,
+      skipped: !applied,
     };
   }
 }
