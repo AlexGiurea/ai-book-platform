@@ -45,13 +45,14 @@ Create a local environment file:
 cp .env.local.example .env.local
 ```
 
-Add your OpenAI API key:
+Add your OpenAI API key (role models default to pipeline v3 Literary routing):
 
 ```bash
 OPENAI_API_KEY=your_openai_api_key
-OPENAI_FREE_MODEL=gpt-5.4-mini
-OPENAI_PRO_MODEL=gpt-5.5
-OPENAI_IMAGE_MODEL=gpt-image-2
+# Optional overrides — blank strings are ignored (safe with empty Vercel envs)
+# OPENAI_PLANNER_MODEL=gpt-5.6-sol
+# OPENAI_WRITER_MODEL_PRO=gpt-5.6-sol
+# OPENAI_IMAGE_MODEL=gpt-image-2
 FOLIO_OWNER_EMAILS=you@example.com
 ```
 
@@ -70,6 +71,7 @@ npm run dev
 npm run build
 npm run start
 npm run lint
+npm test
 npm run db:migrate
 npm run notion:sync-books
 npm run test:cover-image
@@ -82,10 +84,16 @@ npm run test:cover-image
 | `OPENAI_API_KEY` | Yes | OpenAI API key used by the planning, writing, and image agents. |
 | `OPENAI_PROJECT_ID` | No | OpenAI [project](https://platform.openai.com/settings/organization) ID (starts with `proj_`). If omitted, usage may appear under your organization’s default project. Set this to your AI Book-Writing project so all Folio API calls are attributed there. |
 | `JOB_RUNNER_SECRET` | Recommended for production | Long random bearer token required for unauthenticated cron or external scheduler calls to `/api/jobs/run`. Signed-in browser calls are scoped to the current user’s own queued jobs. |
-| `OPENAI_FREE_MODEL` | No | Free-tier text model. Defaults to `gpt-5.4-mini`. |
-| `OPENAI_PRO_MODEL` | No | Pro-tier text model. Defaults to `gpt-5.5`. |
-| `OPENAI_MODEL` | No | Legacy fallback for the Pro tier when `OPENAI_PRO_MODEL` is not set. |
-| `OPENAI_IMAGE_MODEL` | No | Image model used for cover generation. Defaults to `gpt-image-2`. |
+| `OPENAI_PLANNER_MODEL` | No | Planner (Sol). Default `gpt-5.6-sol`. |
+| `OPENAI_PLAN_AUDITOR_MODEL` | No | Plan auditor (Terra). Default `gpt-5.6-terra`. |
+| `OPENAI_WRITER_MODEL_FREE` | No | Free writer. Default `gpt-5.6-luna`. |
+| `OPENAI_WRITER_MODEL_PRO` | No | Pro writer (Literary Sol). Default `gpt-5.6-sol`. Set to `gpt-5.6-terra` for optional Balanced Pro. |
+| `OPENAI_CRITIC_MODEL` | No | Chapter critic. Default `gpt-5.6-luna`. |
+| `OPENAI_REVISE_MODEL_FREE` | No | Free reviser. Default `gpt-5.6-luna`. |
+| `OPENAI_REVISE_MODEL_PRO` | No | Pro reviser. Default `gpt-5.6-sol` (stays Sol even if writer is Terra). |
+| `OPENAI_REVISION_VERIFIER_MODEL` | No | Post-revise verifier. Default `gpt-5.6-luna`. |
+| `OPENAI_FREE_MODEL` / `OPENAI_PRO_MODEL` / `OPENAI_MODEL` | No | Legacy writer fallbacks (blank-safe). Prefer role-specific vars. |
+| `OPENAI_IMAGE_MODEL` | No | Cover image model. Default `gpt-image-2`. |
 | `FOLIO_OWNER_EMAILS` | No | Comma-separated email allowlist that receives Pro without Stripe. Use this for owner and beta accounts before billing launches. |
 | `DATABASE_URL` | Yes for persistence | Neon Postgres connection string used for durable projects, batches, events, and jobs. |
 | `BLOB_READ_WRITE_TOKEN` | Yes for persistent covers | Vercel Blob token used to persist generated cover images. |
@@ -95,6 +103,43 @@ npm run test:cover-image
 | `STRIPE_WEBHOOK_SECRET` | No until billing test | Signing secret for `/api/billing/webhook`. |
 | `STRIPE_PRO_PRICE_ID` | No until billing test | Stripe recurring Price ID for the Pro plan. |
 | `NEXT_PUBLIC_APP_URL` | Recommended for billing | Public app URL used for Checkout and Portal redirects. |
+
+**Blank env safety:** empty or whitespace-only values are treated as unset, so blank Vercel env vars no longer override defaults.
+
+## Pipeline v3 model configuration
+
+Generation uses **pipeline version `v3`**. Role models and the pipeline version are **snapshotted** onto each project at `createProject` (`projects.pipeline_version`, `projects.model_config`). Agents always read the snapshot — mid-deploy env changes do not mix models inside an in-flight book.
+
+| Role | Default | Env override |
+| --- | --- | --- |
+| planner | `gpt-5.6-sol` | `OPENAI_PLANNER_MODEL` |
+| plan_auditor | `gpt-5.6-terra` | `OPENAI_PLAN_AUDITOR_MODEL` |
+| writer (Free) | `gpt-5.6-luna` | `OPENAI_WRITER_MODEL_FREE` → legacy `OPENAI_FREE_MODEL` |
+| writer (Pro Literary) | `gpt-5.6-sol` | `OPENAI_WRITER_MODEL_PRO` → legacy `OPENAI_PRO_MODEL` / `OPENAI_MODEL` |
+| critic | `gpt-5.6-luna` | `OPENAI_CRITIC_MODEL` |
+| revise (Free) | `gpt-5.6-luna` | `OPENAI_REVISE_MODEL_FREE` |
+| revise (Pro) | `gpt-5.6-sol` | `OPENAI_REVISE_MODEL_PRO` |
+| revision_verifier | `gpt-5.6-luna` | `OPENAI_REVISION_VERIFIER_MODEL` |
+| cover | `gpt-image-2` | `OPENAI_IMAGE_MODEL` |
+
+**Literary (default Pro):** writer + reviser Sol. **Balanced (optional):** set only `OPENAI_WRITER_MODEL_PRO=gpt-5.6-terra` while leaving `OPENAI_REVISE_MODEL_PRO` at Sol.
+
+### Job flow
+
+`plan` → (`plan_batches`…)? → `plan_audit` → (`plan_repair` → `plan_audit:2`)? → `awaiting_approval` → `write:N` → (chapter close) `critique` → (`revise` → `verify_revision`)? → next `write` / `complete`. Cover runs in parallel after approval.
+
+### Prompt caching / billing caveat (GPT-5.6)
+
+Calls set a stable `prompt_cache_key` scoped by project + role + config hash. Writer prompts keep a stable canon prefix before dynamic batch content. OpenAI SDK 6.34 does **not** expose explicit `prompt_cache_options` breakpoints — caching relies on key + prefix ordering.
+
+GPT-5.6 cache **writes** are billed at **1.25×** input; cache **reads** are typically a **~90% discount**. Usage rows record `cache_write_tokens` when the API returns them.
+
+### Migration / deployment
+
+1. Deploy code that includes blank-safe model resolution and snapshots.
+2. Run `npm run db:migrate` against Neon (adds `pipeline_version`, `model_config`, `dedupe_key`, `state_delta`, `last_revision_key`, `cache_write_tokens`, etc.).
+3. Do **not** rely on empty Vercel `OPENAI_*` strings — leave unset or set real model IDs.
+4. Existing projects without `model_config` get a deterministic normalized config on read.
 
 ## Billing Foundation
 
