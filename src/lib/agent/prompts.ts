@@ -307,10 +307,15 @@ export function buildWriterSystemPrompt(): string {
 
 You will be given:
 1. The complete Book Blueprint (canon — never contradict it)
-2. The blueprint for the SPECIFIC batch you are writing right now (the beats you must hit)
-3. A compact StoryState ledger (facts, character statuses, open threads)
-4. Summaries of older batches and the most recent batch's full prose
-5. Any open threads from the previous batch
+2. The ENTIRE manuscript written so far, in full
+3. A StoryState ledger (facts, character statuses, open threads) indexing that manuscript
+4. The blueprint for the SPECIFIC batch you are writing right now (the beats you must hit)
+
+You can see the whole book. Use it. Physical objects keep the state the text last
+gave them: a weapon that was fired is emptier, a knife left in a body stays there,
+a wound is on the side the text put it, supplies that were traded away are gone.
+Check the manuscript before you write any detail that the story has established
+before, and never reintroduce something the text already resolved.
 
 Your job: write THE PROSE for the assigned batch, honoring every element of the blueprint and every canonical detail of the book plan.
 
@@ -393,8 +398,10 @@ interface WriterPromptParams {
   input: ProjectInput;
   bible: StoryBible;
   blueprint: BatchBlueprint;
-  recentBatches: Batch[];        // last N batches (with prose) — typically 1
-  recentSummaries: Batch[];      // older batches contributing summaries only
+  /** Complete prose of every prior batch in the window, ascending. Append-only. */
+  manuscriptBatches: Batch[];
+  /** Older batches beyond the token budget, summary only. Normally empty. */
+  summarizedBatches: Batch[];
   storyState?: StoryState;
   isFinalBatch: boolean;
   totalWords: number;
@@ -428,8 +435,8 @@ export function buildWriterUserPrompt(params: WriterPromptParams): string {
     input,
     bible,
     blueprint,
-    recentBatches,
-    recentSummaries,
+    manuscriptBatches,
+    summarizedBatches,
     storyState,
     isFinalBatch,
     totalWords,
@@ -462,27 +469,41 @@ export function buildWriterUserPrompt(params: WriterPromptParams): string {
   // Per-batch relevance note (variable — placed after stable canon)
   const presentNames = blueprint.charactersPresent.join(", ") || "(none flagged)";
 
-  // Rolling summaries: older batches collapsed
-  const olderSummaryBlock = recentSummaries.length
-    ? recentSummaries
+  // Only populated when the manuscript exceeded the token budget.
+  const droppedSummaryBlock = summarizedBatches.length
+    ? summarizedBatches
         .map(
           (b) =>
             `- §${b.batchNumber}${b.chapterTitle ? ` (Ch.${b.chapterNumber} "${b.chapterTitle}")` : ""}: ${b.chapterSummary ?? "—"}`
         )
         .join("\n")
-    : "(none)";
+    : "";
 
-  // Recent prose: typically the single most recent batch
-  const recentProseBlock = recentBatches.length
-    ? recentBatches
+  // The manuscript so far, in full. Append-only, so this is the cache prefix.
+  let manuscriptChapter: number | undefined;
+  const manuscriptBlock = manuscriptBatches.length
+    ? manuscriptBatches
         .map((b) => {
-          const header = b.chapterTitle
-            ? `### Batch ${b.batchNumber} — Ch.${b.chapterNumber} "${b.chapterTitle}"`
-            : `### Batch ${b.batchNumber}`;
-          return `${header}\n${b.prose}`;
+          const parts: string[] = [];
+          if (b.chapterNumber != null && b.chapterNumber !== manuscriptChapter) {
+            manuscriptChapter = b.chapterNumber;
+            parts.push(
+              `## Chapter ${b.chapterNumber}${b.chapterTitle ? ` — "${b.chapterTitle}"` : ""}`
+            );
+          }
+          parts.push(`### §${b.batchNumber}`);
+          parts.push(b.prose);
+          return parts.join("\n\n");
         })
         .join("\n\n")
-    : "(this is the opening batch of the book)";
+    : "(this is the opening batch of the book — nothing has been written yet)";
+
+  const earlierBlock = droppedSummaryBlock
+    ? `# EARLIER CHAPTERS (summary only — beyond the context budget)
+${droppedSummaryBlock}
+
+`
+    : "";
 
   // STABLE prefix first (cache-friendly), then PER-BATCH content last.
   return `# BOOK BLUEPRINT (CANON — OBEY)
@@ -530,6 +551,19 @@ ${threadLedgerBlock}
 # USER'S ORIGINAL IDEA (for flavor reference only — canon is the blueprint)
 ${input.idea}
 
+${earlierBlock}# THE MANUSCRIPT SO FAR
+
+Everything written up to this point, in full. Read it. It is the ground truth for
+what has already happened, who is alive, what they are carrying, what they know,
+and how the narration sounds. Where this text and the blueprint disagree about a
+detail already on the page, the text wins and you carry the contradiction forward
+consistently rather than correcting it mid-scene.
+
+Do not recap it, do not repeat its phrasing, and do not reuse its images. Continue
+from it.
+
+${manuscriptBlock}
+
 # BLUEPRINT FOR THIS BATCH (batch ${blueprint.number} of ${bible.totalBatches})
 
 - Chapter: ${blueprint.chapterNumber} — "${blueprint.chapterTitle}"
@@ -544,14 +578,8 @@ ${blueprint.scenes.map((s, i) => `  ${i + 1}. ${s}`).join("\n")}
 ${blueprint.continuityFlags.length ? blueprint.continuityFlags.map((f) => `  - ${f}`).join("\n") : "  - (none)"}
 - Target words: ~${blueprint.targetWords.toLocaleString()}
 
-# STORY STATE (compact continuity ledger)
+# STORY STATE (continuity ledger — an index into the manuscript above, not a replacement for it)
 ${serializeStoryState(storyState)}
-
-# ROLLING MEMORY — OLDER BATCH SUMMARIES
-${olderSummaryBlock}
-
-# RECENT PROSE (for voice/style continuity; do NOT repeat or recap)
-${recentProseBlock}
 
 # CURRENT STATE
 - Words written so far: ${totalWords.toLocaleString()} / ${targetWords.toLocaleString()} (${progressPct}%)

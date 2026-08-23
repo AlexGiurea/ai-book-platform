@@ -15,10 +15,9 @@ import {
   normalizeStateDelta,
   rebuildStoryStateBeforeBatch,
 } from "./story-state";
+import { readContextTokenBudget, selectManuscriptWindow } from "./writer-context";
 import type { BatchBlueprint, StateDelta, StoryBible } from "./types";
 
-const RECENT_PROSE_COUNT = 1;
-const ROLLING_SUMMARY_COUNT = 8;
 /** Room for ~2,800 words + metadata + reasoning on GPT-5.6. */
 const WRITER_MAX_OUTPUT_TOKENS = 8000;
 
@@ -100,10 +99,21 @@ export class WriterAgent {
     const priorBatches = project.batches
       .filter((b) => b.batchNumber < targetNumber)
       .sort((a, b) => a.batchNumber - b.batchNumber);
-    const recentBatches = priorBatches.slice(-RECENT_PROSE_COUNT);
-    const olderSummaries = priorBatches
-      .slice(0, Math.max(0, priorBatches.length - RECENT_PROSE_COUNT))
-      .slice(-ROLLING_SUMMARY_COUNT);
+
+    // The whole manuscript so far, as an append-only cache prefix. Truncation
+    // only engages past the token budget, which no current length preset hits.
+    const manuscript = selectManuscriptWindow(
+      priorBatches,
+      readContextTokenBudget()
+    );
+    if (manuscript.mode === "truncated") {
+      console.warn("[writer] manuscript context truncated", {
+        projectId,
+        batchNumber: targetNumber,
+        droppedBatches: manuscript.summarized.length,
+        estimatedTokens: manuscript.estimatedTokens,
+      });
+    }
 
     // Story state immediately before this batch (from deltas, not live merge).
     const storyState = rebuildStoryStateBeforeBatch(
@@ -130,8 +140,8 @@ export class WriterAgent {
       input: project.input,
       bible,
       blueprint,
-      recentBatches,
-      recentSummaries: olderSummaries,
+      manuscriptBatches: manuscript.fullProse,
+      summarizedBatches: manuscript.summarized,
       storyState,
       isFinalBatch,
       totalWords: project.totalWords,

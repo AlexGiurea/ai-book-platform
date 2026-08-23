@@ -94,6 +94,7 @@ npm run test:cover-image
 | `OPENAI_REVISION_VERIFIER_MODEL` | No | Post-revise verifier. Default `gpt-5.6-luna`. |
 | `OPENAI_FREE_MODEL` / `OPENAI_PRO_MODEL` / `OPENAI_MODEL` | No | Legacy writer fallbacks (blank-safe). Prefer role-specific vars. |
 | `OPENAI_IMAGE_MODEL` | No | Cover image model. Default `gpt-image-2`. |
+| `FOLIO_WRITER_CONTEXT_TOKEN_BUDGET` | No | Ceiling on prose tokens fed to the writer. Default `400000` — above every length preset, so it is a guard rail, not part of the normal path. |
 | `FOLIO_OWNER_EMAILS` | No | Comma-separated email allowlist that receives Pro without Stripe. Use this for owner and beta accounts before billing launches. |
 | `DATABASE_URL` | Yes for persistence | Neon Postgres connection string used for durable projects, batches, events, and jobs. |
 | `BLOB_READ_WRITE_TOKEN` | Yes for persistent covers | Vercel Blob token used to persist generated cover images. |
@@ -127,6 +128,30 @@ Generation uses **pipeline version `v3`**. Role models and the pipeline version 
 ### Job flow
 
 `plan` → (`plan_batches`…)? → `plan_audit` → (`plan_repair` → `plan_audit:2`)? → `awaiting_approval` → `write:N` → (chapter close) `critique` → (`revise` → `verify_revision`)? → next `write` / `complete`. Cover runs in parallel after approval.
+
+### Writer context
+
+The writer receives the **entire manuscript written so far**, in full, not a
+rolling window of summaries. A finished 162,000-word book is roughly 216,000
+tokens against a 1,050,000-token window, so it fits comfortably.
+
+This is cheap only because the manuscript is **append-only**: the call for batch
+N sees batches 1..N-1, and the call for batch N+1 sees exactly those bytes plus
+one more. That makes it an ideal prompt-cache prefix — 90% off on reads, with
+only the newest batch paying the write premium. The prompt therefore orders
+sections stable-first: blueprint, user idea, manuscript, *then* everything that
+varies per call (story state, this batch's blueprint, progress). **Moving any
+per-call section above the manuscript ends the cache prefix early and collapses
+the cache hit rate** — there is a test pinning the ordering.
+
+If prose ever exceeds `FOLIO_WRITER_CONTEXT_TOKEN_BUDGET`, the oldest batches
+drop to summaries. The cut advances in blocks of 8 rather than one batch at a
+time, so the surviving range stays byte-identical across several consecutive
+calls instead of invalidating the cache on every one.
+
+Watch `cached_input_tokens` in `llm_usage` (surfaced by `npm run quality:score`).
+If it is not climbing run over run, the prefix is being invalidated and this
+design is costing money rather than saving it.
 
 The critic reads the **complete chapter** and the verifier the **complete revised batch** — both sampled excerpts before, which hid most of the text. When the verifier reports the fix did not land, the batch gets **exactly one more revision attempt** (`MAX_REVISION_ATTEMPTS = 2`) targeting the remaining issues, then ships regardless. Retry jobs carry an `a2` key suffix; attempt 1 keeps the unsuffixed key so in-flight books are unaffected.
 
