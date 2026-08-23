@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-23T22:00:55.980Z",
+  "project": {
+    "id": "moodeuif-6708si4c",
+    "title": "The House at the End of Every Road",
+    "plan": "pro",
+    "pipelineVersion": null,
+    "lengthPreset": "medium",
+    "targetWords": 40000,
+    "totalWords": 54691,
+    "batches": 14,
+    "modelConfig": {
+      "pipelineVersion": "v3",
+      "models": {
+        "planner": "gpt-5.6-sol",
+        "plan_auditor": "gpt-5.6-terra",
+        "writer": "gpt-5.5",
+        "critic": "gpt-5.6-luna",
+        "revise": "gpt-5.6-sol",
+        "revision_verifier": "gpt-5.6-luna",
+        "cover": "gpt-image-2"
+      },
+      "configHash": "9e61cbe7"
+    }
+  },
+  "checks": {
+    "results": [
+      {
+        "id": "total-length",
+        "label": "Total length vs target",
+        "status": "fail",
+        "value": 1.367275,
+        "detail": "54,691 words against a 40,000 target (+36.7%)."
+      },
+      {
+        "id": "batch-length",
+        "label": "Per-batch length discipline",
+        "status": "fail",
+        "value": 1.3951785714285716,
+        "detail": "Batches average 39.5% over their blueprint target; 13 of 14 exceed it by more than 20%.",
+        "items": [
+          "§1: 4,428w vs 2,800w target (+58.1%)",
+          "§2: 4,340w vs 2,800w target (+55.0%)",
+          "§3: 4,022w vs 2,800w target (+43.6%)",
+          "§4: 3,651w vs 2,800w target (+30.4%)",
+          "§5: 3,960w vs 2,800w target (+41.4%)",
+          "§6: 3,700w vs 2,800w target (+32.1%)",
+          "§7: 4,440w vs 2,800w target (+58.6%)",
+          "§8: 3,617w vs 2,800w target (+29.2%)",
+          "§9: 3,465w vs 2,800w target (+23.8%)",
+          "§10: 4,209w vs 2,800w target (+50.3%)",
+          "§11: 3,991w vs 2,800w target (+42.5%)",
+          "§12: 3,492w vs 2,800w target (+24.7%)",
+          "…and 1 more"
+        ]
+      },
+      {
+        "id": "thread-resolution",
+        "label": "Planted threads resolved",
+        "status": "skipped",
+        "detail": "Bible carries no thread ledger — this book predates the v3 planner, so thread payoff cannot be verified mechanically."
+      },
+      {
+        "id": "character-presence",
+        "label": "Planned characters appear in the text",
+        "status": "pass",
+        "value": 1,
+        "detail": "8 of 8 planned characters appear in the manuscript."
+      },
+      {
+        "id": "em-dash-ban",
+        "label": "Em-dash ban held",
+        "status": "pass",
+        "value": 0,
+        "detail": "No em-dashes survived into the manuscript."
+      },
+      {
+        "id": "repeated-phrases",
+        "label": "Distinctive phrases not reused",
+        "status": "warn",
+        "value": 1,
+        "detail": "1 distinctive 7-word phrases recur 3+ times — a self-plagiarism signal that tracks voice drift.",
+        "items": [
+          "3x \"we forgive the hand that served order\""
+        ]
+      },
+      {
+        "id": "chapter-balance",
+        "label": "Chapter length balance",
+        "status": "pass",
+        "value": 0.10340160093590163,
+        "detail": "Chapter lengths vary by 10.3% (shortest 8,768w, longest 11,757w across 5 chapters)."
+      }
+    ],
+    "passed": 3,
+    "warned": 1,
+    "failed": 2,
+    "skipped": 1
+  },
+  "cost": {
+    "priceListVerifiedOn": "2026-08-23",
+    "measured": false,
+    "totalUsd": null,
+    "usdPerThousandWords": null,
+    "byRole": []
+  },
+  "judge": null
+}

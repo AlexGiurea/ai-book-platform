@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/lib/agent/pipeline-v3.test.ts",
+    "test": "tsx --test src/lib/agent/pipeline-v3.test.ts src/lib/quality/quality-harness.test.ts",
     "db:migrate": "node scripts/migrate.mjs",
     "notion:sync-books": "node scripts/sync-notion-books.mjs",
-    "test:cover-image": "node scripts/test-cover-generation.mjs"
+    "test:cover-image": "node scripts/test-cover-generation.mjs",
+    "quality:score": "tsx scripts/quality/score-book.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

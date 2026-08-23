@@ -141,6 +141,39 @@ GPT-5.6 cache **writes** are billed at **1.25×** input; cache **reads** are typ
 3. Do **not** rely on empty Vercel `OPENAI_*` strings — leave unset or set real model IDs.
 4. Existing projects without `model_config` get a deterministic normalized config on read.
 
+## Quality Harness
+
+A benchmark for the generation pipeline. Deterministic checks are free; the
+whole-book judge is the only part that costs money.
+
+```bash
+npm run quality:score -- --all                      # free checks, every finished book
+npm run quality:score -- --latest                   # free checks, most recent book
+npm run quality:score -- --project <id> --judge     # adds one whole-book judge call
+npm run quality:score -- --project <id> --judge --judge-model claude-opus-5
+```
+
+Results are written to `quality-runs/*.json` and are **meant to be committed** —
+the value is the trend line. Re-running the same book against a newer model is
+how you measure whether the pipeline actually improved.
+
+**Deterministic checks** (`src/lib/quality/manuscript-checks.ts`, no model calls):
+total and per-batch length adherence, planted-thread resolution against the v3
+thread ledger, planned characters who never reach the page, em-dash ban
+compliance, distinctive-phrase reuse, and chapter length balance.
+
+**Judge** (`src/lib/quality/judge.ts`): one call reading the entire manuscript,
+scoring prose, continuity, structure, voice, and payoff, plus concrete
+chapter-cited issues. Costs about $0.78 on Sol for an 80,000-word book. The
+rubric is frozen and versioned (`RUBRIC_VERSION`) — scores are only comparable
+within a version, so bump it when the wording changes.
+
+**Pricing** (`src/lib/quality/pricing.ts`): list prices per model, with
+`PRICING_VERIFIED_ON` recording when they were last checked. Note that
+`cached_input_tokens` and `cache_write_tokens` are *subsets* of `input_tokens`
+in the Responses API — billing them on top of the full input overstates a
+cold-cache call by roughly 40%.
+
 ## Billing Foundation
 
 Billing is prepared but intentionally not launched. New accounts default to Free unless their email is included in `FOLIO_OWNER_EMAILS`. Pro unlocks longer generation lengths, multiple generated books, and export endpoints.

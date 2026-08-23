@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-23T22:00:56.280Z",
+  "project": {
+    "id": "mogmix4h-jq84wqbl",
+    "title": "Wrong Channel",
+    "plan": "pro",
+    "pipelineVersion": null,
+    "lengthPreset": "long",
+    "targetWords": 60000,
+    "totalWords": 79418,
+    "batches": 21,
+    "modelConfig": {
+      "pipelineVersion": "v3",
+      "models": {
+        "planner": "gpt-5.6-sol",
+        "plan_auditor": "gpt-5.6-terra",
+        "writer": "gpt-5.5",
+        "critic": "gpt-5.6-luna",
+        "revise": "gpt-5.6-sol",
+        "revision_verifier": "gpt-5.6-luna",
+        "cover": "gpt-image-2"
+      },
+      "configHash": "9e61cbe7"
+    }
+  },
+  "checks": {
+    "results": [
+      {
+        "id": "total-length",
+        "label": "Total length vs target",
+        "status": "fail",
+        "value": 1.3236333333333334,
+        "detail": "79,418 words against a 60,000 target (+32.4%)."
+      },
+      {
+        "id": "batch-length",
+        "label": "Per-batch length discipline",
+        "status": "fail",
+        "value": 1.3238100999625504,
+        "detail": "Batches average 32.4% over their blueprint target; 16 of 21 exceed it by more than 20%.",
+        "items": [
+          "§1: 3,919w vs 2,850w target (+37.5%)",
+          "§2: 3,832w vs 2,850w target (+34.5%)",
+          "§3: 4,235w vs 2,850w target (+48.6%)",
+          "§4: 4,334w vs 2,850w target (+52.1%)",
+          "§5: 4,165w vs 2,850w target (+46.1%)",
+          "§7: 3,851w vs 2,850w target (+35.1%)",
+          "§8: 4,234w vs 2,850w target (+48.6%)",
+          "§9: 4,110w vs 2,850w target (+44.2%)",
+          "§11: 4,257w vs 2,850w target (+49.4%)",
+          "§12: 3,700w vs 2,850w target (+29.8%)",
+          "§13: 3,432w vs 2,850w target (+20.4%)",
+          "§14: 3,889w vs 2,850w target (+36.5%)",
+          "…and 4 more"
+        ]
+      },
+      {
+        "id": "thread-resolution",
+        "label": "Planted threads resolved",
+        "status": "skipped",
+        "detail": "Bible carries no thread ledger — this book predates the v3 planner, so thread payoff cannot be verified mechanically."
+      },
+      {
+        "id": "character-presence",
+        "label": "Planned characters appear in the text",
+        "status": "pass",
+        "value": 1,
+        "detail": "5 of 5 planned characters appear in the manuscript."
+      },
+      {
+        "id": "em-dash-ban",
+        "label": "Em-dash ban held",
+        "status": "pass",
+        "value": 0,
+        "detail": "No em-dashes survived into the manuscript."
+      },
+      {
+        "id": "repeated-phrases",
+        "label": "Distinctive phrases not reused",
+        "status": "warn",
+        "value": 2,
+        "detail": "2 distinctive 7-word phrases recur 3+ times — a self-plagiarism signal that tracks voice drift.",
+        "items": [
+          "7x \"the old children's ward under the hill\"",
+          "3x \"tamsin closed her eyes for half a\""
+        ]
+      },
+      {
+        "id": "chapter-balance",
+        "label": "Chapter length balance",
+        "status": "pass",
+        "value": 0.0595876765519817,
+        "detail": "Chapter lengths vary by 6.0% (shortest 10,104w, longest 12,195w across 7 chapters)."
+      }
+    ],
+    "passed": 3,
+    "warned": 1,
+    "failed": 2,
+    "skipped": 1
+  },
+  "cost": {
+    "priceListVerifiedOn": "2026-08-23",
+    "measured": false,
+    "totalUsd": null,
+    "usdPerThousandWords": null,
+    "byRole": []
+  },
+  "judge": null
+}

@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-23T22:00:56.467Z",
+  "project": {
+    "id": "mof2ziem-1oyo0lfh",
+    "title": "Under the Trees of Myrtana",
+    "plan": "pro",
+    "pipelineVersion": null,
+    "lengthPreset": "medium",
+    "targetWords": 40000,
+    "totalWords": 55181,
+    "batches": 14,
+    "modelConfig": {
+      "pipelineVersion": "v3",
+      "models": {
+        "planner": "gpt-5.6-sol",
+        "plan_auditor": "gpt-5.6-terra",
+        "writer": "gpt-5.5",
+        "critic": "gpt-5.6-luna",
+        "revise": "gpt-5.6-sol",
+        "revision_verifier": "gpt-5.6-luna",
+        "cover": "gpt-image-2"
+      },
+      "configHash": "9e61cbe7"
+    }
+  },
+  "checks": {
+    "results": [
+      {
+        "id": "total-length",
+        "label": "Total length vs target",
+        "status": "fail",
+        "value": 1.379525,
+        "detail": "55,181 words against a 40,000 target (+38.0%)."
+      },
+      {
+        "id": "batch-length",
+        "label": "Per-batch length discipline",
+        "status": "fail",
+        "value": 1.4076785714285716,
+        "detail": "Batches average 40.8% over their blueprint target; 13 of 14 exceed it by more than 20%.",
+        "items": [
+          "§1: 4,057w vs 2,800w target (+44.9%)",
+          "§2: 4,083w vs 2,800w target (+45.8%)",
+          "§3: 3,695w vs 2,800w target (+32.0%)",
+          "§4: 4,321w vs 2,800w target (+54.3%)",
+          "§5: 3,956w vs 2,800w target (+41.3%)",
+          "§6: 4,199w vs 2,800w target (+50.0%)",
+          "§7: 3,775w vs 2,800w target (+34.8%)",
+          "§8: 3,701w vs 2,800w target (+32.2%)",
+          "§9: 3,540w vs 2,800w target (+26.4%)",
+          "§11: 3,423w vs 2,800w target (+22.2%)",
+          "§12: 5,137w vs 2,800w target (+83.5%)",
+          "§13: 4,069w vs 2,800w target (+45.3%)",
+          "…and 1 more"
+        ]
+      },
+      {
+        "id": "thread-resolution",
+        "label": "Planted threads resolved",
+        "status": "skipped",
+        "detail": "Bible carries no thread ledger — this book predates the v3 planner, so thread payoff cannot be verified mechanically."
+      },
+      {
+        "id": "character-presence",
+        "label": "Planned characters appear in the text",
+        "status": "pass",
+        "value": 1,
+        "detail": "7 of 7 planned characters appear in the manuscript."
+      },
+      {
+        "id": "em-dash-ban",
+        "label": "Em-dash ban held",
+        "status": "pass",
+        "value": 0,
+        "detail": "No em-dashes survived into the manuscript."
+      },
+      {
+        "id": "repeated-phrases",
+        "label": "Distinctive phrases not reused",
+        "status": "pass",
+        "value": 0,
+        "detail": "No 7-word phrase recurs 3 or more times."
+      },
+      {
+        "id": "chapter-balance",
+        "label": "Chapter length balance",
+        "status": "pass",
+        "value": 0.21844570018186332,
+        "detail": "Chapter lengths vary by 21.8% (shortest 6,471w, longest 13,383w across 5 chapters)."
+      }
+    ],
+    "passed": 4,
+    "warned": 0,
+    "failed": 2,
+    "skipped": 1
+  },
+  "cost": {
+    "priceListVerifiedOn": "2026-08-23",
+    "measured": false,
+    "totalUsd": null,
+    "usdPerThousandWords": null,
+    "byRole": []
+  },
+  "judge": null
+}
