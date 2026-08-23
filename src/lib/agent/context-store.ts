@@ -6,6 +6,12 @@ import {
   type SubscriptionPlan,
 } from "@/lib/plans";
 import { GenerationCancelledError } from "./generation-errors";
+import {
+  createPipelineConfig,
+  normalizePipelineConfig,
+  PIPELINE_VERSION,
+  type ProjectPipelineConfig,
+} from "./model-config";
 import type {
   Batch,
   BatchEvent,
@@ -13,12 +19,25 @@ import type {
   BookProject,
   FullContext,
   GenerationJob,
+  GenerationJobPayload,
   GenerationJobType,
   LengthPreset,
   ProjectInput,
   ProjectStatus,
+  StateDelta,
   StoryBible,
+  StoryState,
 } from "./types";
+import { emptyStoryState } from "./types";
+import {
+  normalizeStateDelta,
+  normalizeStoryState,
+  rebuildStoryStateFromDeltas,
+} from "./story-state";
+import type { LlmRole } from "./openai-client";
+
+/** Max attempts before a poison job is permanently failed (stale reclaim still allowed until then). */
+export const MAX_JOB_ATTEMPTS = 3;
 
 const LENGTH_TARGET_WORDS: Record<LengthPreset, number> = {
   dev: 12000,
@@ -65,6 +84,9 @@ type ProjectRow = {
   title: string | null;
   synopsis: string | null;
   bible: StoryBible | null;
+  story_state: StoryState | null;
+  pipeline_version: string | null;
+  model_config: ProjectPipelineConfig | null;
   cover_status: BookProject["coverStatus"];
   cover: BookCover | null;
   cover_error: string | null;
@@ -78,6 +100,9 @@ type BatchRow = {
   chapter_number: number | null;
   chapter_title: string | null;
   chapter_summary: string | null;
+  open_threads: unknown;
+  state_delta: unknown;
+  last_revision_key: string | null;
   prose: string;
   word_count: number;
   created_at: string | Date;
@@ -99,9 +124,26 @@ type JobRow = {
   started_at: string | Date | null;
   completed_at: string | Date | null;
   error: string | null;
+  payload: GenerationJobPayload | null;
+  dedupe_key: string | null;
   created_at: string | Date;
   updated_at: string | Date;
 };
+
+function coerceOpenThreads(value: unknown): string | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "string") return value;
+  // JSONB may arrive as a parsed string already, or as { text: "..." }
+  if (typeof value === "object" && value !== null && "text" in value) {
+    const text = (value as { text?: unknown }).text;
+    return typeof text === "string" ? text : undefined;
+  }
+  try {
+    return String(value);
+  } catch {
+    return undefined;
+  }
+}
 
 function mapBatch(row: BatchRow): Batch {
   return {
@@ -109,6 +151,9 @@ function mapBatch(row: BatchRow): Batch {
     chapterNumber: row.chapter_number ?? undefined,
     chapterTitle: row.chapter_title ?? undefined,
     chapterSummary: row.chapter_summary ?? undefined,
+    openThreads: coerceOpenThreads(row.open_threads),
+    stateDelta: normalizeStateDelta(row.state_delta, row.batch_number) ?? undefined,
+    lastRevisionKey: row.last_revision_key ?? undefined,
     prose: row.prose,
     wordCount: row.word_count,
     createdAt: iso(row.created_at),
@@ -134,20 +179,35 @@ function mapJob(row: JobRow): GenerationJob {
     startedAt: row.started_at ? iso(row.started_at) : undefined,
     completedAt: row.completed_at ? iso(row.completed_at) : undefined,
     error: row.error ?? undefined,
+    payload: row.payload ?? undefined,
+    dedupeKey: row.dedupe_key ?? undefined,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
   };
 }
 
 function mapProject(row: ProjectRow, batches: Batch[], events: BatchEvent[]): BookProject {
+  const plan = normalizePlan(row.plan);
+  const modelConfig = normalizePipelineConfig(
+    row.model_config ??
+      (row.pipeline_version
+        ? { pipelineVersion: row.pipeline_version }
+        : undefined),
+    plan
+  );
   return {
     id: row.id,
     userId: row.user_id ?? undefined,
     userEmail: row.user_email ?? undefined,
-    plan: normalizePlan(row.plan),
+    plan,
     input: row.input,
     status: row.status,
-    bible: row.bible ?? undefined,
+    bible: row.bible
+      ? { ...row.bible, threadLedger: row.bible.threadLedger ?? [] }
+      : undefined,
+    storyState: normalizeStoryState(row.story_state ?? emptyStoryState()),
+    pipelineVersion: row.pipeline_version ?? modelConfig.pipelineVersion,
+    modelConfig,
     batches,
     events,
     targetWords: row.target_words,
@@ -167,6 +227,23 @@ function mapProject(row: ProjectRow, batches: Batch[], events: BatchEvent[]): Bo
 class MemoryStore {
   projects = new Map<string, BookProject>();
   jobs = new Map<string, GenerationJob>();
+  llmUsage: {
+    id: number;
+    projectId: string;
+    role: string;
+    model: string;
+    inputTokens: number;
+    cachedInputTokens: number;
+    cacheWriteTokens: number;
+    outputTokens: number;
+    operation?: string;
+    jobId?: string;
+    durationMs?: number;
+    requestId?: string;
+    estimated?: boolean;
+    createdAt: string;
+  }[] = [];
+  nextUsageId = 1;
 }
 
 declare global {
@@ -205,12 +282,16 @@ export class ContextStore {
     const expectedBatches = Math.max(1, Math.round(targetWords / WORDS_PER_BATCH));
     const now = new Date().toISOString();
     const projectPlan = normalizePlan(plan);
+    const modelConfig = createPipelineConfig(projectPlan);
     const project: BookProject = {
       id: makeId(),
       userId,
       plan: projectPlan,
       input,
       status: "queued",
+      storyState: emptyStoryState(),
+      pipelineVersion: PIPELINE_VERSION,
+      modelConfig,
       batches: [],
       events: [],
       targetWords,
@@ -231,10 +312,11 @@ export class ContextStore {
     await sql`
       insert into projects (
         id, user_id, plan, input, status, target_words, total_words, expected_batches,
-        cover_status, created_at, updated_at
+        cover_status, pipeline_version, model_config, created_at, updated_at
       ) values (
         ${project.id}, ${userId ?? null}, ${projectPlan}, ${JSON.stringify(input)}::jsonb, ${project.status},
         ${targetWords}, 0, ${expectedBatches}, ${project.coverStatus},
+        ${PIPELINE_VERSION}, ${JSON.stringify(modelConfig)}::jsonb,
         ${now}, ${now}
       )
     `;
@@ -243,7 +325,17 @@ export class ContextStore {
   }
 
   async getProject(id: string): Promise<BookProject | undefined> {
-    if (!this.persistent) return memory.projects.get(id);
+    if (!this.persistent) {
+      const p = memory.projects.get(id);
+      if (!p) return undefined;
+      if (!p.modelConfig) {
+        p.modelConfig = normalizePipelineConfig(undefined, p.plan);
+        p.pipelineVersion = p.pipelineVersion ?? p.modelConfig.pipelineVersion;
+      }
+      if (p.bible && !p.bible.threadLedger) p.bible.threadLedger = [];
+      p.storyState = normalizeStoryState(p.storyState);
+      return p;
+    }
 
     const sql = getSql();
     const rows = (await sql`
@@ -269,6 +361,70 @@ export class ContextStore {
     ]);
 
     return mapProject(row, batchRows.map(mapBatch), eventRows.map(mapEvent));
+  }
+
+  /**
+   * Persist a deterministic model snapshot for legacy rows exactly once.
+   * Concurrent callers converge on whichever conditional update wins; every
+   * caller then returns the stored value rather than its local candidate.
+   */
+  async ensureProjectPipelineConfig(
+    projectId: string
+  ): Promise<ProjectPipelineConfig | undefined> {
+    if (!this.persistent) {
+      const project = memory.projects.get(projectId);
+      if (!project) return undefined;
+      if (!project.modelConfig) {
+        project.modelConfig = normalizePipelineConfig(undefined, project.plan);
+      }
+      project.pipelineVersion =
+        project.pipelineVersion ?? project.modelConfig.pipelineVersion;
+      return project.modelConfig;
+    }
+
+    const sql = getSql();
+    const rows = (await sql`
+      select plan, pipeline_version, model_config
+      from projects
+      where id = ${projectId}
+    `) as {
+      plan: string | null;
+      pipeline_version: string | null;
+      model_config: ProjectPipelineConfig | null;
+    }[];
+    const row = rows[0];
+    if (!row) return undefined;
+    if (row.model_config) {
+      return normalizePipelineConfig(row.model_config, normalizePlan(row.plan));
+    }
+
+    const candidate = normalizePipelineConfig(
+      row.pipeline_version
+        ? { pipelineVersion: row.pipeline_version }
+        : undefined,
+      normalizePlan(row.plan)
+    );
+    const persisted = (await sql`
+      update projects
+      set model_config = coalesce(
+            model_config,
+            ${JSON.stringify(candidate)}::jsonb
+          ),
+          pipeline_version = coalesce(
+            pipeline_version,
+            ${candidate.pipelineVersion}
+          )
+      where id = ${projectId}
+      returning model_config, pipeline_version
+    `) as {
+      model_config: ProjectPipelineConfig;
+      pipeline_version: string | null;
+    }[];
+    if (!persisted[0]?.model_config) return undefined;
+    return normalizePipelineConfig(
+      persisted[0].model_config,
+      normalizePlan(row.plan)
+    );
   }
 
   async getProjectForUser(
@@ -367,61 +523,321 @@ export class ContextStore {
     this.syncProjectToNotion(id);
   }
 
+  /**
+   * Idempotent batch insert at absolute batchNumber.
+   * Returns { batch, inserted }. total_words increases only when inserted.
+   */
   async appendBatch(
     id: string,
-    batch: Omit<Batch, "wordCount" | "createdAt" | "batchNumber">
-  ): Promise<Batch | undefined> {
+    batch: Omit<Batch, "wordCount" | "createdAt"> & { batchNumber: number }
+  ): Promise<{ batch: Batch; inserted: boolean } | undefined> {
     const now = new Date().toISOString();
+    const wordCount = countWords(batch.prose);
+    const stateDelta = normalizeStateDelta(batch.stateDelta, batch.batchNumber);
+
     if (!this.persistent) {
       const p = memory.projects.get(id);
       if (!p) return undefined;
+      const existing = p.batches.find((b) => b.batchNumber === batch.batchNumber);
+      if (existing) {
+        return { batch: existing, inserted: false };
+      }
       const full: Batch = {
         ...batch,
-        batchNumber: p.batches.length + 1,
-        wordCount: countWords(batch.prose),
+        stateDelta: stateDelta ?? undefined,
+        wordCount,
         createdAt: now,
       };
       p.batches.push(full);
+      p.batches.sort((a, b) => a.batchNumber - b.batchNumber);
       p.totalWords += full.wordCount;
       p.updatedAt = now;
       this.syncProjectToNotion(id);
-      return full;
+      return { batch: full, inserted: true };
     }
 
     const sql = getSql();
-    const numberRows = (await sql`
-      select coalesce(max(batch_number), 0) + 1 as next_number
-      from book_batches
-      where project_id = ${id}
-    `) as { next_number: number }[];
-    const full: Batch = {
-      ...batch,
-      batchNumber: numberRows[0]?.next_number ?? 1,
-      wordCount: countWords(batch.prose),
-      createdAt: now,
-    };
+    const openThreadsJson =
+      batch.openThreads != null ? JSON.stringify(batch.openThreads) : null;
+    const stateDeltaJson =
+      stateDelta != null ? JSON.stringify(stateDelta) : null;
 
-    await sql.transaction([
-      sql`
+    // One statement: project total advances iff this statement inserted the batch.
+    // A replay produces no `inserted` row, so `updated_project` is also a no-op.
+    const insertedRows = (await sql`
+      with inserted as (
         insert into book_batches (
           project_id, batch_number, chapter_number, chapter_title,
-          chapter_summary, prose, word_count, created_at
+          chapter_summary, prose, word_count, open_threads, state_delta, created_at
         ) values (
-          ${id}, ${full.batchNumber}, ${full.chapterNumber ?? null},
-          ${full.chapterTitle ?? null}, ${full.chapterSummary ?? null},
-          ${full.prose}, ${full.wordCount}, ${now}
+          ${id}, ${batch.batchNumber}, ${batch.chapterNumber ?? null},
+          ${batch.chapterTitle ?? null}, ${batch.chapterSummary ?? null},
+          ${batch.prose}, ${wordCount},
+          ${openThreadsJson}::jsonb, ${stateDeltaJson}::jsonb, ${now}
         )
-      `,
-      sql`
-        update projects
-        set total_words = total_words + ${full.wordCount},
+        on conflict (project_id, batch_number) do nothing
+        returning *
+      ),
+      updated_project as (
+        update projects p
+        set total_words = p.total_words + inserted.word_count,
             updated_at = ${now}
-        where id = ${id}
-      `,
-    ]);
+        from inserted
+        where p.id = ${id}
+        returning p.id
+      )
+      select inserted.* from inserted
+    `) as BatchRow[];
+
+    if (insertedRows[0]) {
+      this.syncProjectToNotion(id);
+      return { batch: mapBatch(insertedRows[0]), inserted: true };
+    }
+
+    const existing = (await sql`
+      select * from book_batches
+      where project_id = ${id} and batch_number = ${batch.batchNumber}
+    `) as BatchRow[];
+    if (!existing[0]) return undefined;
+    this.syncProjectToNotion(id);
+    return { batch: mapBatch(existing[0]), inserted: false };
+  }
+
+  /**
+   * Replace batch prose + state_delta + optional revision key atomically.
+   * If revisionKey matches last_revision_key, returns existing without mutation.
+   */
+  async replaceBatch(
+    id: string,
+    batchNumber: number,
+    update: {
+      prose: string;
+      chapterSummary?: string;
+      openThreads?: string;
+      stateDelta?: StateDelta;
+      revisionKey?: string;
+    }
+  ): Promise<{ batch: Batch; applied: boolean } | undefined> {
+    const now = new Date().toISOString();
+    const newWordCount = countWords(update.prose);
+    const stateDelta = normalizeStateDelta(update.stateDelta, batchNumber);
+
+    if (!this.persistent) {
+      const p = memory.projects.get(id);
+      if (!p) return undefined;
+      const idx = p.batches.findIndex((b) => b.batchNumber === batchNumber);
+      if (idx < 0) return undefined;
+      const prev = p.batches[idx];
+      if (
+        update.revisionKey &&
+        prev.lastRevisionKey &&
+        prev.lastRevisionKey === update.revisionKey
+      ) {
+        return { batch: prev, applied: false };
+      }
+      const next: Batch = {
+        ...prev,
+        prose: update.prose,
+        chapterSummary: update.chapterSummary ?? prev.chapterSummary,
+        openThreads: update.openThreads ?? prev.openThreads,
+        stateDelta: stateDelta ?? prev.stateDelta,
+        lastRevisionKey: update.revisionKey ?? prev.lastRevisionKey,
+        wordCount: newWordCount,
+      };
+      p.totalWords = p.totalWords - prev.wordCount + newWordCount;
+      p.batches[idx] = next;
+      p.updatedAt = now;
+      this.syncProjectToNotion(id);
+      return { batch: next, applied: true };
+    }
+
+    const sql = getSql();
+    const openThreadsJson =
+      update.openThreads != null
+        ? JSON.stringify(update.openThreads)
+        : null;
+    const stateDeltaJson =
+      stateDelta != null
+        ? JSON.stringify(stateDelta)
+        : null;
+
+    // Lock/read/update batch and apply its exact word delta to the project in one
+    // statement. A matching revision key yields no `updated_batch` row, so both
+    // manuscript and total_words remain unchanged under replay or concurrency.
+    const updatedRows = (await sql`
+      with current_batch as materialized (
+        select *
+        from book_batches
+        where project_id = ${id} and batch_number = ${batchNumber}
+        for update
+      ),
+      updated_batch as (
+        update book_batches b
+        set prose = ${update.prose},
+            chapter_summary = coalesce(
+              ${update.chapterSummary ?? null}::text,
+              current_batch.chapter_summary
+            ),
+            open_threads = case
+              when ${update.openThreads ?? null}::text is null
+                then current_batch.open_threads
+              else ${openThreadsJson}::jsonb
+            end,
+            state_delta = case
+              when ${stateDeltaJson}::text is null
+                then current_batch.state_delta
+              else ${stateDeltaJson}::jsonb
+            end,
+            last_revision_key = coalesce(
+              ${update.revisionKey ?? null}::text,
+              current_batch.last_revision_key
+            ),
+            word_count = ${newWordCount}
+        from current_batch
+        where b.project_id = current_batch.project_id
+          and b.batch_number = current_batch.batch_number
+          and (
+            ${update.revisionKey ?? null}::text is null
+            or current_batch.last_revision_key is distinct from ${update.revisionKey ?? null}
+          )
+        returning b.*, (${newWordCount} - current_batch.word_count) as word_delta
+      ),
+      updated_project as (
+        update projects p
+        set total_words = p.total_words + updated_batch.word_delta,
+            updated_at = ${now}
+        from updated_batch
+        where p.id = ${id}
+        returning p.id
+      )
+      select
+        updated_batch.batch_number,
+        updated_batch.chapter_number,
+        updated_batch.chapter_title,
+        updated_batch.chapter_summary,
+        updated_batch.open_threads,
+        updated_batch.state_delta,
+        updated_batch.last_revision_key,
+        updated_batch.prose,
+        updated_batch.word_count,
+        updated_batch.created_at
+      from updated_batch
+    `) as BatchRow[];
     this.syncProjectToNotion(id);
 
-    return full;
+    if (updatedRows[0]) {
+      return { batch: mapBatch(updatedRows[0]), applied: true };
+    }
+
+    const after = (await sql`
+      select * from book_batches
+      where project_id = ${id} and batch_number = ${batchNumber}
+    `) as BatchRow[];
+    if (!after[0]) return undefined;
+    const mapped = mapBatch(after[0]);
+    return { batch: mapped, applied: false };
+  }
+
+  async setStoryState(id: string, storyState: StoryState): Promise<void> {
+    const now = new Date().toISOString();
+    const normalized = normalizeStoryState(storyState);
+    if (!this.persistent) {
+      const p = memory.projects.get(id);
+      if (!p) return;
+      p.storyState = normalized;
+      p.updatedAt = now;
+      return;
+    }
+    await getSql()`
+      update projects
+      set story_state = ${JSON.stringify(normalized)}::jsonb,
+          updated_at = ${now}
+      where id = ${id}
+    `;
+  }
+
+  /** Rebuild canonical StoryState from all stored batch state_deltas. */
+  async rebuildStoryState(projectId: string): Promise<StoryState> {
+    const project = await this.getProject(projectId);
+    if (!project) return emptyStoryState();
+    const rebuilt = rebuildStoryStateFromDeltas(
+      project.batches.map((b) => ({
+        batchNumber: b.batchNumber,
+        stateDelta: b.stateDelta,
+      }))
+    );
+    await this.setStoryState(projectId, rebuilt);
+    return rebuilt;
+  }
+
+  /** @deprecated Prefer rebuildStoryState after accepted writes/revisions. */
+  async mergeStoryState(id: string, delta: StateDelta | undefined | null): Promise<StoryState> {
+    void delta;
+    return this.rebuildStoryState(id);
+  }
+
+  /**
+   * Best-effort usage metering. Never throws — generation must not fail on metering.
+   */
+  async recordLlmUsage(
+    projectId: string,
+    role: LlmRole | string,
+    model: string,
+    usage: {
+      inputTokens?: number;
+      cachedInputTokens?: number;
+      cacheWriteTokens?: number;
+      outputTokens?: number;
+      operation?: string;
+      jobId?: string;
+      durationMs?: number;
+      requestId?: string;
+      estimated?: boolean;
+    }
+  ): Promise<void> {
+    try {
+      const inputTokens = usage.inputTokens ?? 0;
+      const cachedInputTokens = usage.cachedInputTokens ?? 0;
+      const cacheWriteTokens = usage.cacheWriteTokens ?? 0;
+      const outputTokens = usage.outputTokens ?? 0;
+      const now = new Date().toISOString();
+
+      if (!this.persistent) {
+        memory.llmUsage.push({
+          id: memory.nextUsageId++,
+          projectId,
+          role,
+          model,
+          inputTokens,
+          cachedInputTokens,
+          cacheWriteTokens,
+          outputTokens,
+          operation: usage.operation,
+          jobId: usage.jobId,
+          durationMs: usage.durationMs,
+          requestId: usage.requestId,
+          estimated: usage.estimated,
+          createdAt: now,
+        });
+        return;
+      }
+
+      await getSql()`
+        insert into llm_usage (
+          project_id, role, model, input_tokens, cached_input_tokens, cache_write_tokens,
+          output_tokens, operation, job_id, duration_ms, request_id, estimated, created_at
+        ) values (
+          ${projectId}, ${role}, ${model},
+          ${inputTokens}, ${cachedInputTokens}, ${cacheWriteTokens},
+          ${outputTokens}, ${usage.operation ?? null}, ${usage.jobId ?? null},
+          ${usage.durationMs ?? null}, ${usage.requestId ?? null},
+          ${usage.estimated ?? false}, ${now}
+        )
+      `;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[llm-usage] failed to record for ${projectId}: ${message}`);
+    }
   }
 
   async appendEvent(id: string, event: Omit<BatchEvent, "timestamp">): Promise<void> {
@@ -576,13 +992,26 @@ export class ContextStore {
   async enqueueJob(
     projectId: string,
     type: GenerationJobType,
-    options: { force?: boolean; runAfter?: string } = {}
+    options: {
+      force?: boolean;
+      runAfter?: string;
+      payload?: GenerationJobPayload;
+      dedupeKey?: string;
+    } = {}
   ): Promise<GenerationJob> {
     const now = new Date().toISOString();
     const runAfter = options.runAfter ?? now;
+    const payload = options.payload;
+    const dedupeKey = options.dedupeKey;
 
     if (!this.persistent) {
-      if (!options.force) {
+      if (dedupeKey) {
+        const byKey = Array.from(memory.jobs.values()).find(
+          (job) => job.projectId === projectId && job.dedupeKey === dedupeKey
+        );
+        if (byKey) return byKey;
+      }
+      if (!options.force && !dedupeKey) {
         const existing = Array.from(memory.jobs.values()).find(
           (job) =>
             job.projectId === projectId &&
@@ -598,6 +1027,8 @@ export class ContextStore {
         status: "queued",
         attempts: 0,
         runAfter,
+        payload,
+        dedupeKey,
         createdAt: now,
         updatedAt: now,
       };
@@ -606,7 +1037,17 @@ export class ContextStore {
     }
 
     const sql = getSql();
-    if (!options.force) {
+    if (dedupeKey) {
+      const byKey = (await sql`
+        select * from generation_jobs
+        where project_id = ${projectId}
+          and dedupe_key = ${dedupeKey}
+        limit 1
+      `) as JobRow[];
+      if (byKey[0]) return mapJob(byKey[0]);
+    }
+
+    if (!options.force && !dedupeKey) {
       const existing = (await sql`
         select * from generation_jobs
         where project_id = ${projectId}
@@ -619,12 +1060,115 @@ export class ContextStore {
     }
 
     const id = makeId();
-    const rows = (await sql`
-      insert into generation_jobs (id, project_id, type, status, run_after, created_at, updated_at)
-      values (${id}, ${projectId}, ${type}, 'queued', ${runAfter}, ${now}, ${now})
-      returning *
-    `) as JobRow[];
-    return mapJob(rows[0]);
+    const payloadJson = payload != null ? JSON.stringify(payload) : null;
+    try {
+      const rows = (await sql`
+        insert into generation_jobs (
+          id, project_id, type, status, run_after, payload, dedupe_key, created_at, updated_at
+        )
+        values (
+          ${id}, ${projectId}, ${type}, 'queued', ${runAfter},
+          ${payloadJson}::jsonb, ${dedupeKey ?? null}, ${now}, ${now}
+        )
+        returning *
+      `) as JobRow[];
+      return mapJob(rows[0]);
+    } catch (err) {
+      // Unique (project_id, dedupe_key) race — reuse existing
+      if (dedupeKey) {
+        const byKey = (await sql`
+          select * from generation_jobs
+          where project_id = ${projectId}
+            and dedupe_key = ${dedupeKey}
+          limit 1
+        `) as JobRow[];
+        if (byKey[0]) return mapJob(byKey[0]);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Mark exhausted queued/stale-running jobs failed and return them for
+   * centralized project recovery. Bounded and idempotent: only rows transitioning
+   * from queued/running are returned.
+   */
+  async reapExhaustedJobs(userId?: string): Promise<GenerationJob[]> {
+    const now = new Date().toISOString();
+    const error = `Exceeded maximum attempts (${MAX_JOB_ATTEMPTS})`;
+    if (!this.persistent) {
+      const staleMs = Date.now() - 6 * 60 * 1000;
+      const exhausted: GenerationJob[] = [];
+      for (const candidate of memory.jobs.values()) {
+        if (exhausted.length >= 20) break;
+        const project = memory.projects.get(candidate.projectId);
+        if (userId && project?.userId !== userId) continue;
+        const eligible =
+          candidate.attempts >= MAX_JOB_ATTEMPTS &&
+          (candidate.status === "queued" ||
+            (candidate.status === "running" &&
+              !!candidate.lockedAt &&
+              new Date(candidate.lockedAt).getTime() < staleMs));
+        if (!eligible) continue;
+        candidate.status = "failed";
+        candidate.error = candidate.error ?? error;
+        candidate.completedAt = candidate.completedAt ?? now;
+        candidate.updatedAt = now;
+        exhausted.push({ ...candidate });
+      }
+      return exhausted;
+    }
+
+    const rows = userId
+      ? ((await getSql()`
+          update generation_jobs
+          set status = 'failed',
+              error = coalesce(error, ${error}),
+              completed_at = coalesce(completed_at, ${now}),
+              updated_at = ${now}
+          where id in (
+            select gj.id
+            from generation_jobs gj
+            where gj.attempts >= ${MAX_JOB_ATTEMPTS}
+              and (
+                gj.status = 'queued'
+                or (
+                  gj.status = 'running'
+                  and gj.locked_at < now() - interval '6 minutes'
+                )
+              )
+              and exists (
+                select 1 from projects p
+                where p.id = gj.project_id and p.user_id = ${userId}
+              )
+            order by gj.created_at asc
+            limit 20
+          )
+          returning *
+        `) as JobRow[])
+      : ((await getSql()`
+          update generation_jobs
+          set status = 'failed',
+              error = coalesce(error, ${error}),
+              completed_at = coalesce(completed_at, ${now}),
+              updated_at = ${now}
+          where id in (
+            select id
+            from generation_jobs
+            where attempts >= ${MAX_JOB_ATTEMPTS}
+              and (
+                status = 'queued'
+                or (
+                  status = 'running'
+                  and locked_at < now() - interval '6 minutes'
+                )
+              )
+            order by created_at asc
+            limit 20
+          )
+          returning *
+        `) as JobRow[]);
+    return rows.map(mapJob);
   }
 
   async claimNextJob(userId?: string): Promise<GenerationJob | undefined> {
@@ -632,18 +1176,17 @@ export class ContextStore {
     if (!this.persistent) {
       const staleMs = Date.now() - 6 * 60 * 1000;
       const job = Array.from(memory.jobs.values())
-        .filter(
-          (candidate) => {
-            const project = memory.projects.get(candidate.projectId);
-            if (userId && project?.userId !== userId) return false;
-            return (
-              candidate.status === "queued" ||
-              (candidate.status === "running" &&
-                candidate.lockedAt &&
-                new Date(candidate.lockedAt).getTime() < staleMs)
-            );
-          }
-        )
+        .filter((candidate) => {
+          const project = memory.projects.get(candidate.projectId);
+          if (userId && project?.userId !== userId) return false;
+          if (candidate.attempts >= MAX_JOB_ATTEMPTS) return false;
+          return (
+            candidate.status === "queued" ||
+            (candidate.status === "running" &&
+              candidate.lockedAt &&
+              new Date(candidate.lockedAt).getTime() < staleMs)
+          );
+        })
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
       if (!job) return undefined;
       job.status = "running";
@@ -665,7 +1208,8 @@ export class ContextStore {
             updated_at = ${now}
         where id = (
           select gj.id from generation_jobs gj
-          where (
+          where gj.attempts < ${MAX_JOB_ATTEMPTS}
+          and (
             (gj.status = 'queued' and gj.run_after <= now())
             or (gj.status = 'running' and gj.locked_at < now() - interval '6 minutes')
           )
@@ -694,10 +1238,10 @@ export class ContextStore {
           updated_at = ${now}
       where id = (
         select id from generation_jobs
-        where (
-          status = 'queued' and run_after <= now()
-        ) or (
-          status = 'running' and locked_at < now() - interval '6 minutes'
+        where attempts < ${MAX_JOB_ATTEMPTS}
+        and (
+          (status = 'queued' and run_after <= now())
+          or (status = 'running' and locked_at < now() - interval '6 minutes')
         )
         order by created_at asc
         limit 1
