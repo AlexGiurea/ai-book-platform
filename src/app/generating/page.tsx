@@ -239,10 +239,15 @@ function ObservabilityPanel({
       e.type === "planning_spine_complete" ||
       e.type === "planning_batches_progress" ||
       e.type === "planning_complete" ||
+      e.type === "plan_audit" ||
+      e.type === "plan_repaired" ||
       e.type === "cover_start" ||
       e.type === "cover_complete" ||
       e.type === "cover_failed" ||
       e.type === "batch_complete" ||
+      e.type === "chapter_critique" ||
+      e.type === "batch_revised" ||
+      e.type === "revision_verified" ||
       e.type === "project_complete" ||
       e.type === "project_failed"
   );
@@ -453,6 +458,97 @@ function ObservabilityPanel({
                 </motion.div>
               );
             }
+            if (ev.type === "chapter_critique") {
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2.5">
+                  <CheckCircle2 size={12} className="text-sky-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-parchment-300">
+                      Chapter {ev.chapterNumber ?? "?"} continuity check
+                    </span>
+                    <span className="text-xs text-parchment-500/60 ml-1.5">
+                      {ev.verdict === "revise" ? "revise queued" : "passed"}
+                      {ev.issueCount != null ? ` · ${ev.issueCount} notes` : ""}
+                      {ev.error ? ` · ${ev.error}` : ""}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>
+                </motion.div>
+              );
+            }
+            if (ev.type === "batch_revised") {
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2.5">
+                  <CheckCircle2 size={12} className="text-amber-300 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-parchment-300">
+                      Section {ev.batchNumber} revised
+                    </span>
+                    <span className="text-xs text-parchment-500/60 ml-1.5">
+                      {ev.error
+                        ? ev.error
+                        : ev.wordsInBatch != null
+                          ? `${ev.wordsInBatch.toLocaleString()} words`
+                          : "continuity fix"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>
+                </motion.div>
+              );
+            }
+            if (ev.type === "revision_verified") {
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2.5">
+                  <CheckCircle2 size={12} className="text-sky-300 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-parchment-300">
+                      Revision check
+                    </span>
+                    <span className="text-xs text-parchment-500/60 ml-1.5">
+                      {ev.fixed === false || ev.verdict === "warning"
+                        ? "warning — continuing"
+                        : "passed"}
+                      {ev.error ? ` · ${ev.error}` : ""}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>
+                </motion.div>
+              );
+            }
+            if (ev.type === "plan_audit") {
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2.5">
+                  <CheckCircle2 size={12} className="text-sky-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-parchment-300">Plan audit</span>
+                    <span className="text-xs text-parchment-500/60 ml-1.5">
+                      {ev.verdict === "repair"
+                        ? "repair queued"
+                        : ev.verdict === "warning"
+                          ? "warning — continuing to approval"
+                          : "passed"}
+                      {ev.issueCount != null ? ` · ${ev.issueCount} notes` : ""}
+                      {ev.error ? ` · ${ev.error}` : ""}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>
+                </motion.div>
+              );
+            }
+            if (ev.type === "plan_repaired") {
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2.5">
+                  <CheckCircle2 size={12} className="text-amber-300 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-parchment-300">Plan repaired</span>
+                    <span className="text-xs text-parchment-500/60 ml-1.5">
+                      {ev.error ? ev.error : "targeted fixes applied"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>
+                </motion.div>
+              );
+            }
             if (ev.type === "cover_start") {
               return (
                 <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2">
@@ -549,12 +645,16 @@ function ObservabilityPanel({
                 const color =
                   ev.type === "batch_complete" ? "text-emerald-400/80"
                   : ev.type === "batch_start" ? "text-sky-400/70"
+                  : ev.type === "chapter_critique" ? "text-sky-400/70"
+                  : ev.type === "batch_revised" ? "text-amber-300/80"
                   : ev.type === "project_complete" ? "text-emerald-400"
                   : ev.type === "project_failed" ? "text-red-400"
                   : "text-parchment-500/50";
 
                 const details: string[] = [];
                 if (ev.batchNumber != null) details.push(`batch=${ev.batchNumber}`);
+                if (ev.chapterNumber != null) details.push(`chapter=${ev.chapterNumber}`);
+                if (ev.verdict != null) details.push(`verdict=${ev.verdict}`);
                 if (ev.wordsInBatch != null) details.push(`words=${ev.wordsInBatch}`);
                 if (ev.totalWords != null) details.push(`total=${ev.totalWords}`);
                 if (ev.durationMs != null) details.push(`duration=${fmtMs(ev.durationMs)}`);
