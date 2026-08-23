@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { store } from "@/lib/agent";
+import { JobKeys } from "@/lib/agent/job-keys";
+import type { WriteJobPayload } from "@/lib/agent/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { rejectCrossOrigin } from "@/lib/security/request";
 
@@ -33,9 +35,16 @@ export async function POST(
   }
 
   await store.updateStatus(id, "writing");
-  await store.enqueueJob(id, "write");
+  await store.enqueueJob(id, "write", {
+    force: true,
+    dedupeKey: JobKeys.write(1),
+    payload: { batchNumber: 1 } satisfies WriteJobPayload,
+  });
   if (project.input.preferences.imageStyle !== "none") {
-    await store.enqueueJob(id, "cover");
+    await store.enqueueJob(id, "cover", {
+      force: true,
+      dedupeKey: JobKeys.coverInitial(),
+    });
   }
 
   return NextResponse.json({ ok: true, projectId: id });

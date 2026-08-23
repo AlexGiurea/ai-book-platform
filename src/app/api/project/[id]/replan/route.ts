@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { store } from "@/lib/agent";
+import { makeId } from "@/lib/agent/context-store";
+import { JobKeys } from "@/lib/agent/job-keys";
 import { getCurrentUser } from "@/lib/auth/session";
 import { rejectCrossOrigin } from "@/lib/security/request";
 
@@ -28,9 +30,23 @@ export async function POST(
       { status: 409 }
     );
   }
+  if (project.batches.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          "Replan is only available before writing begins. This project already contains manuscript prose.",
+      },
+      { status: 409 }
+    );
+  }
 
+  const planningRunId = `replan:${makeId()}`;
   await store.updateStatus(id, "queued");
-  await store.enqueueJob(id, "plan", { force: true });
+  await store.enqueueJob(id, "plan", {
+    force: true,
+    dedupeKey: JobKeys.plan(planningRunId),
+    payload: { planningRunId },
+  });
 
   return NextResponse.json({ ok: true, projectId: id });
 }

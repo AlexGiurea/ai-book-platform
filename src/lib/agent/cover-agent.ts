@@ -75,7 +75,7 @@ export class CoverAgent {
     if (!project) throw new Error(`Project ${projectId} not found`);
     if (!project.bible) throw new Error("Cannot generate cover before a bible exists");
 
-    const model = getImageModelName();
+    const model = getImageModelName(project);
     const prompt = buildCoverPrompt(project.bible, project.input.preferences.imageStyle);
     const client = getOpenAIClient();
 
@@ -84,6 +84,7 @@ export class CoverAgent {
     await store.appendEvent(projectId, { type: "cover_start", model });
 
     const genSignal = store.getGenerationSignal(projectId);
+    const started = Date.now();
     try {
       const response = await client.images.generate(
         {
@@ -99,6 +100,33 @@ export class CoverAgent {
         },
         genSignal ? { signal: genSignal } : undefined
       );
+      const durationMs = Date.now() - started;
+
+      // Meter cover: record estimated usage when token counts are unavailable.
+      const usageAny = response as {
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          total_tokens?: number;
+        };
+      };
+      if (usageAny.usage) {
+        await store.recordLlmUsage(projectId, "cover", model, {
+          inputTokens: usageAny.usage.input_tokens ?? 0,
+          outputTokens: usageAny.usage.output_tokens ?? usageAny.usage.total_tokens ?? 0,
+          operation: "cover",
+          durationMs,
+          estimated: false,
+        });
+      } else {
+        await store.recordLlmUsage(projectId, "cover", model, {
+          inputTokens: 0,
+          outputTokens: 0,
+          operation: `cover:${COVER_SIZE}:${COVER_QUALITY}`,
+          durationMs,
+          estimated: true,
+        });
+      }
 
       const image = response.data?.[0];
       if (!image?.b64_json) {

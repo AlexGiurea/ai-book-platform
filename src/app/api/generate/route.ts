@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { store } from "@/lib/agent";
 import type { ProjectInput } from "@/lib/agent";
+import { JobKeys } from "@/lib/agent/job-keys";
 import { getCurrentUser } from "@/lib/auth/session";
 import { canCreateProject, canUseLength } from "@/lib/plans";
 import {
@@ -94,7 +95,11 @@ export async function POST(request: Request) {
     user.plan
   );
 
-  await store.enqueueJob(project.id, "plan");
+  await store.enqueueJob(project.id, "plan", {
+    force: true,
+    dedupeKey: JobKeys.planInitial(),
+    payload: { planningRunId: "initial" },
+  });
 
   return NextResponse.json({ projectId: project.id });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { store } from "@/lib/agent";
+import { JobKeys } from "@/lib/agent/job-keys";
 import { getCurrentUser } from "@/lib/auth/session";
 import { rejectCrossOrigin } from "@/lib/security/request";
 
@@ -33,7 +34,10 @@ export async function POST(
   }
 
   await store.updateCoverStatus(id, "pending");
-  await store.enqueueJob(id, "cover", { force: true });
+  await store.enqueueJob(id, "cover", {
+    force: true,
+    dedupeKey: JobKeys.coverRegen(),
+  });
 
   return NextResponse.json({ ok: true, projectId: id });
 }
