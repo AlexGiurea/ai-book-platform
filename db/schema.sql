@@ -69,6 +69,7 @@ create table if not exists projects (
   title text,
   synopsis text,
   bible jsonb,
+  story_state jsonb,
   cover_status text not null default 'pending',
   cover jsonb,
   cover_error text,
@@ -99,11 +100,30 @@ create table if not exists book_batches (
   chapter_summary text,
   prose text not null,
   word_count integer not null,
+  open_threads jsonb,
   created_at timestamptz not null default now(),
   primary key (project_id, batch_number)
 );
 
 create index if not exists book_batches_project_idx on book_batches (project_id, batch_number);
+
+alter table book_batches
+  add column if not exists open_threads jsonb;
+
+alter table projects
+  add column if not exists story_state jsonb;
+
+alter table projects
+  add column if not exists pipeline_version text;
+
+alter table projects
+  add column if not exists model_config jsonb;
+
+alter table book_batches
+  add column if not exists state_delta jsonb;
+
+alter table book_batches
+  add column if not exists last_revision_key text;
 
 create table if not exists generation_events (
   id bigserial primary key,
@@ -125,9 +145,57 @@ create table if not exists generation_jobs (
   started_at timestamptz,
   completed_at timestamptz,
   error text,
+  payload jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table generation_jobs
+  add column if not exists payload jsonb;
+
+alter table generation_jobs
+  add column if not exists dedupe_key text;
+
+create unique index if not exists generation_jobs_project_dedupe_uidx
+  on generation_jobs (project_id, dedupe_key)
+  where dedupe_key is not null;
+
+create table if not exists llm_usage (
+  id bigserial primary key,
+  project_id text not null references projects(id) on delete cascade,
+  role text not null,
+  model text not null,
+  input_tokens integer not null default 0,
+  cached_input_tokens integer not null default 0,
+  cache_write_tokens integer not null default 0,
+  output_tokens integer not null default 0,
+  operation text,
+  job_id text,
+  duration_ms integer,
+  request_id text,
+  estimated boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+alter table llm_usage
+  add column if not exists cache_write_tokens integer not null default 0;
+
+alter table llm_usage
+  add column if not exists operation text;
+
+alter table llm_usage
+  add column if not exists job_id text;
+
+alter table llm_usage
+  add column if not exists duration_ms integer;
+
+alter table llm_usage
+  add column if not exists request_id text;
+
+alter table llm_usage
+  add column if not exists estimated boolean not null default false;
+
+create index if not exists llm_usage_project_idx on llm_usage (project_id, created_at desc);
 
 create index if not exists generation_jobs_claim_idx
   on generation_jobs (status, run_after, created_at);
