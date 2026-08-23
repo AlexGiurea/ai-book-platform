@@ -1,5 +1,11 @@
 import { zodTextFormat } from "openai/helpers/zod";
-import { getModelName, getOpenAIClient } from "./openai-client";
+import {
+  buildResponsesCallExtras,
+  extractResponseUsage,
+  getModelForProject,
+  getOpenAIClient,
+  getProjectPipelineConfig,
+} from "./openai-client";
 import { PLANNER_TIMEOUT_MS } from "./constants";
 import { store, TARGET_BATCHES_PER_CHAPTER, WORDS_PER_BATCH } from "./context-store";
 import { toGenerationCancelled } from "./generation-errors";
@@ -19,7 +25,19 @@ import {
   summarizeBibleForSegmentPrompt,
 } from "./prompts";
 import { stripEmDashes } from "./sanitize";
-import type { BatchBlueprint, ChapterPlan, StoryBible } from "./types";
+import type { BatchBlueprint, ChapterPlan, StoryBible, ThreadLedgerEntry } from "./types";
+
+function normalizeThreadLedger(
+  raw: { id: string; description: string; plantBatch: number; resolveByBatch: number }[] | null | undefined
+): ThreadLedgerEntry[] {
+  if (!raw?.length) return [];
+  return raw.map((t) => ({
+    id: stripEmDashes(t.id).trim() || "thread",
+    description: stripEmDashes(t.description),
+    plantBatch: t.plantBatch,
+    resolveByBatch: t.resolveByBatch,
+  }));
+}
 
 /** Books with more batches than this use spine + chunked batch blueprints (each job stays under serverless runtime). */
 export const MONOLITHIC_PLAN_BATCH_CAP = 13;
@@ -46,7 +64,7 @@ function allocateChapterBatchCounts(
   const remaining = totalBatches - n;
   const raw = weights.map((w) => (remaining * w) / sumW);
   const floors = raw.map((r) => Math.floor(r));
-  let slack = remaining - floors.reduce((a, b) => a + b, 0);
+  const slack = remaining - floors.reduce((a, b) => a + b, 0);
   const fracs = raw.map((r, i) => ({ i, rem: r - Math.floor(r) }));
   fracs.sort((a, b) => b.rem - a.rem);
   for (let k = 0; k < slack; k++) {
@@ -168,6 +186,7 @@ function buildStoryBibleFromSpinePayload(
     })),
     chapters: chapterPlans,
     batches,
+    threadLedger: normalizeThreadLedger(parsed.threadLedger),
     totalBatches,
     targetWords,
     createdAt: new Date().toISOString(),
@@ -181,7 +200,7 @@ export class PlannerAgent {
     if (!project) throw new Error(`Project ${projectId} not found`);
 
     const client = getOpenAIClient();
-    const model = getModelName(project.plan);
+    const model = getModelForProject(project, "planner");
     const targetWords = project.targetWords;
     const totalBatches = Math.max(1, Math.round(targetWords / WORDS_PER_BATCH));
     const targetChapters = Math.max(
@@ -234,12 +253,20 @@ export class PlannerAgent {
     }, HEARTBEAT_MS);
     let response;
     try {
+      const config = getProjectPipelineConfig(project);
+      const extras = buildResponsesCallExtras({
+        projectId,
+        role: "planner",
+        model,
+        config,
+      });
       response = await client.responses.parse(
         {
           model,
           instructions,
           input,
           max_output_tokens: PLANNER_MAX_OUTPUT_TOKENS,
+          ...extras,
           text: {
             format: zodTextFormat(StoryBibleSchema, "story_bible"),
           },
@@ -267,6 +294,13 @@ export class PlannerAgent {
       clearTimeout(timeout);
       clearInterval(heartbeat);
     }
+
+    await store.recordLlmUsage(
+      projectId,
+      "planner",
+      model,
+      extractResponseUsage(response)
+    );
 
     const parsed = response.output_parsed;
     if (!parsed) {
@@ -343,6 +377,7 @@ export class PlannerAgent {
       })),
       chapters: normalizedChapters,
       batches: normalizedBatches,
+      threadLedger: normalizeThreadLedger(parsed.threadLedger),
       totalBatches: normalizedBatches.length,
       targetWords,
       createdAt: new Date().toISOString(),
@@ -357,7 +392,7 @@ export class PlannerAgent {
     if (!project) throw new Error(`Project ${projectId} not found`);
 
     const client = getOpenAIClient();
-    const model = getModelName(project.plan);
+    const model = getModelForProject(project, "planner");
     const targetWords = project.targetWords;
     const totalBatches = Math.max(1, Math.round(targetWords / WORDS_PER_BATCH));
     const targetChapters = Math.max(
@@ -413,12 +448,20 @@ export class PlannerAgent {
 
     let response;
     try {
+      const config = getProjectPipelineConfig(project);
+      const extras = buildResponsesCallExtras({
+        projectId,
+        role: "planner",
+        model,
+        config,
+      });
       response = await client.responses.parse(
         {
           model,
           instructions,
           input,
           max_output_tokens: Math.min(PLANNER_MAX_OUTPUT_TOKENS, 8000),
+          ...extras,
           text: {
             format: zodTextFormat(StoryBibleSpineSchema, "story_spine"),
           },
@@ -441,6 +484,13 @@ export class PlannerAgent {
       clearTimeout(timeout);
       clearInterval(heartbeat);
     }
+
+    await store.recordLlmUsage(
+      projectId,
+      "planner",
+      model,
+      extractResponseUsage(response)
+    );
 
     const spine = response.output_parsed;
     if (!spine?.chapters.length) {
@@ -487,7 +537,7 @@ export class PlannerAgent {
     }
 
     const client = getOpenAIClient();
-    const model = getModelName(project.plan);
+    const model = getModelForProject(project, "planner");
     const batchStart = bible.batches.length + 1;
     const batchEnd = Math.min(
       bible.totalBatches,
@@ -548,12 +598,20 @@ export class PlannerAgent {
 
     let response;
     try {
+      const config = getProjectPipelineConfig(project);
+      const extras = buildResponsesCallExtras({
+        projectId,
+        role: "planner",
+        model,
+        config,
+      });
       response = await client.responses.parse(
         {
           model,
           instructions,
           input: segmentInput,
           max_output_tokens: PLANNER_MAX_OUTPUT_TOKENS,
+          ...extras,
           text: {
             format: zodTextFormat(BatchSegmentOutputSchema, "batch_segment"),
           },
@@ -574,6 +632,13 @@ export class PlannerAgent {
     } finally {
       clearTimeout(timeout);
     }
+
+    await store.recordLlmUsage(
+      projectId,
+      "planner",
+      model,
+      extractResponseUsage(response)
+    );
 
     const seg = response.output_parsed;
     if (!seg?.batches?.length) {
