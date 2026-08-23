@@ -3,6 +3,8 @@ import type {
   BatchBlueprint,
   ProjectInput,
   StoryBible,
+  StoryState,
+  PlanAuditIssue,
 } from "./types";
 import { TARGET_BATCHES_PER_CHAPTER, WORDS_PER_BATCH } from "./context-store";
 
@@ -24,6 +26,7 @@ You are the sole planning intelligence. Everything you produce is the ground-tru
 - SPECIFICITY OVER GENERALITY. "A dark forest" is useless. "The Umberwood — pines so tall the canopy swallows noon; the moss glows faint blue where sap leaks" is useful. Every scene beat, every setting note, every character line you write must pass the specificity test.
 - DRAMATIC STRUCTURE. Use a classical arc (setup → rising action → midpoint reversal → escalation → climax → resolution) scaled to the book's length. Map the structure onto actual batch numbers.
 - EARN EVERY BEAT. If you plan a betrayal in batch 17, you must plant the seed in an earlier batch. Your blueprint should show deliberate setup-and-payoff.
+- THREAD LEDGER. Include a threadLedger array of planned continuity threads with stable concise ids (e.g. "letter-secret"), description, plantBatch, and resolveByBatch. Prefer 4–12 threads scaled to book length. Downstream writers open/resolve by exact id.
 - NO PLACEHOLDERS. No "TBD", no "something happens here", no generic "character confronts villain". Be concrete about WHICH character does WHAT, WHERE, and WHY.
 - NO EM DASHES ANYWHERE. Em dashes ("—"), en dashes ("–"), and double-hyphens ("--") as sentence-level punctuation are BANNED in every field you write (voiceGuide, styleGuide, synopsis, chapter summaries, scene beats, continuity flags — everything). The writer is instructed to use zero em dashes; your blueprint text must also contain zero, or you will contaminate the downstream voice.
 - Express emphasis and rhythm through varied sentence length, commas, periods, colons, semicolons, parentheses, and paragraphing. Never recommend em-dash cadence in style guidance.
@@ -305,19 +308,22 @@ export function buildWriterSystemPrompt(): string {
 You will be given:
 1. The complete Book Blueprint (canon — never contradict it)
 2. The blueprint for the SPECIFIC batch you are writing right now (the beats you must hit)
-3. Summaries of recent batches (your short-term memory of what just happened)
-4. Any open threads from the previous batch
+3. A compact StoryState ledger (facts, character statuses, open threads)
+4. Summaries of older batches and the most recent batch's full prose
+5. Any open threads from the previous batch
 
 Your job: write THE PROSE for the assigned batch, honoring every element of the blueprint and every canonical detail of the book plan.
 
 # ABSOLUTE RULES
 
 - Write only the prose for THIS batch. Do not skip ahead, do not summarize, do not recap.
+- The Folio reader already surfaces chapter headings. Jump straight into narration; avoid opening paragraphs that duplicate them (patterns like Chapter 5, Chapter V:, or repeating the chapter title as a standalone slug line unless the blueprint truly calls for visible in-world typesetting).
 - Honor the blueprint's voice, tense, POV, world rules, and character canon without exception.
 - Hit every scene beat listed in the blueprint, in roughly the listed order. You may add connective tissue but may not drop or swap beats.
 - Respect continuityFlags verbatim — these are non-negotiable facts the reader already knows.
 - Characters speak in the voice defined for them in the blueprint.
 - Target length: approximately the blueprint's targetWords. Do not pad; do not rush.
+- Keep stateDelta brief: a few newFacts, characterUpdates, threadsOpened, and threadsResolved at most.
 
 # CRAFT
 
@@ -374,19 +380,47 @@ If this is the final batch of the book, the story MUST END here — climax resol
 
 - prose: the literary text of this batch. No headings except an optional chapter title line at the top when positionInChapter is "opening" or "single" (format: "Chapter N — Title" on its own line, then a blank line, then prose).
 - summary: 2–3 sentences of plot facts that happened in this batch. Factual, not evaluative. This becomes memory for future batches.
-- openThreads: one to three sentences naming dangling threads / promises / unresolved tensions for the next batch to pick up.`;
+- openThreads: one to three sentences naming dangling threads / promises / unresolved tensions for the next batch to pick up (legacy display string).
+- stateDelta: compact continuity updates for this batch only:
+  - newFacts: short factual strings
+  - characterUpdates: {name, status}
+  - threadsOpened: {id, description} using planned threadLedger ids when applicable (concise stable ids like "letter-secret")
+  - threadsResolved: {id} exact ids only — never fuzzy substring matches
+  Keep each list short.`;
 }
 
 interface WriterPromptParams {
   input: ProjectInput;
   bible: StoryBible;
   blueprint: BatchBlueprint;
-  recentBatches: Batch[];        // last N batches (with prose)
+  recentBatches: Batch[];        // last N batches (with prose) — typically 1
   recentSummaries: Batch[];      // older batches contributing summaries only
-  lastOpenThreads?: string;
+  storyState?: StoryState;
   isFinalBatch: boolean;
   totalWords: number;
   targetWords: number;
+  /** Optional critique issues injected for revise passes */
+  critiqueFixes?: string;
+}
+
+function serializeStoryState(state: StoryState | undefined): string {
+  if (!state) return "(empty — beginning of book)";
+  const facts = state.facts?.length
+    ? state.facts.map((f) => `- ${f}`).join("\n")
+    : "- (none yet)";
+  const chars = state.characters?.length
+    ? state.characters.map((c) => `- ${c.name}: ${c.status}`).join("\n")
+    : "- (none yet)";
+  const threads = state.openThreads?.length
+    ? state.openThreads
+        .map((t) =>
+          typeof t === "string"
+            ? `- ${t}`
+            : `- [${t.id}] ${t.description} (opened batch ${t.openedBatch})`
+        )
+        .join("\n")
+    : "- (none)";
+  return `Facts:\n${facts}\nCharacters:\n${chars}\nOpen threads:\n${threads}`;
 }
 
 export function buildWriterUserPrompt(params: WriterPromptParams): string {
@@ -396,28 +430,37 @@ export function buildWriterUserPrompt(params: WriterPromptParams): string {
     blueprint,
     recentBatches,
     recentSummaries,
-    lastOpenThreads,
+    storyState,
     isFinalBatch,
     totalWords,
     targetWords,
+    critiqueFixes,
   } = params;
+
+  const threadLedgerBlock =
+    bible.threadLedger && bible.threadLedger.length
+      ? bible.threadLedger
+          .map(
+            (t) =>
+              `- [${t.id}] ${t.description} (plant ~batch ${t.plantBatch}, resolve by ~${t.resolveByBatch})`
+          )
+          .join("\n")
+      : "(none planned)";
 
   const progressPct = Math.min(100, Math.round((totalWords / targetWords) * 100));
 
-  // Characters relevant to this batch (present + their canon)
-  const relevantChars = bible.characters.filter((c) =>
-    blueprint.charactersPresent.some(
-      (n) => n.toLowerCase() === c.name.toLowerCase()
-    )
-  );
-  const characterLines = relevantChars.length
-    ? relevantChars
+  // Full character bible (stable across batches for prompt-cache prefix)
+  const allCharacterLines = bible.characters.length
+    ? bible.characters
         .map(
           (c) =>
             `- ${c.name} (${c.role}). ${c.description}\n    Voice: ${c.voice}\n    Motivation: ${c.motivation}\n    Arc: ${c.arc}`
         )
         .join("\n")
-    : "(no named characters flagged — lean on the blueprint's cast as needed)";
+    : "(no characters in bible)";
+
+  // Per-batch relevance note (variable — placed after stable canon)
+  const presentNames = blueprint.charactersPresent.join(", ") || "(none flagged)";
 
   // Rolling summaries: older batches collapsed
   const olderSummaryBlock = recentSummaries.length
@@ -429,7 +472,7 @@ export function buildWriterUserPrompt(params: WriterPromptParams): string {
         .join("\n")
     : "(none)";
 
-  // Recent batches: include last ~2 full-prose excerpts for voice/style continuity
+  // Recent prose: typically the single most recent batch
   const recentProseBlock = recentBatches.length
     ? recentBatches
         .map((b) => {
@@ -441,6 +484,7 @@ export function buildWriterUserPrompt(params: WriterPromptParams): string {
         .join("\n\n")
     : "(this is the opening batch of the book)";
 
+  // STABLE prefix first (cache-friendly), then PER-BATCH content last.
   return `# BOOK BLUEPRINT (CANON — OBEY)
 
 ## Title
@@ -477,8 +521,14 @@ ${bible.themes.map((t) => `- ${t}`).join("\n")}
 - Climax: ${bible.structure.climax}
 - Resolution: ${bible.structure.resolution}
 
-## Characters in THIS batch
-${characterLines}
+## Full Character Bible
+${allCharacterLines}
+
+## Thread Ledger (planned ids — prefer these in stateDelta)
+${threadLedgerBlock}
+
+# USER'S ORIGINAL IDEA (for flavor reference only — canon is the blueprint)
+${input.idea}
 
 # BLUEPRINT FOR THIS BATCH (batch ${blueprint.number} of ${bible.totalBatches})
 
@@ -487,11 +537,15 @@ ${characterLines}
 - Setting: ${blueprint.settingLocation}
 - Tone: ${blueprint.toneNote}
 - Purpose: ${blueprint.purpose}
+- Characters present this batch: ${presentNames}
 - Scene beats to hit (in order):
 ${blueprint.scenes.map((s, i) => `  ${i + 1}. ${s}`).join("\n")}
 - Continuity flags (MUST respect):
 ${blueprint.continuityFlags.length ? blueprint.continuityFlags.map((f) => `  - ${f}`).join("\n") : "  - (none)"}
 - Target words: ~${blueprint.targetWords.toLocaleString()}
+
+# STORY STATE (compact continuity ledger)
+${serializeStoryState(storyState)}
 
 # ROLLING MEMORY — OLDER BATCH SUMMARIES
 ${olderSummaryBlock}
@@ -499,15 +553,270 @@ ${olderSummaryBlock}
 # RECENT PROSE (for voice/style continuity; do NOT repeat or recap)
 ${recentProseBlock}
 
-${lastOpenThreads ? `# OPEN THREADS FROM PREVIOUS BATCH\n${lastOpenThreads}\n` : ""}
 # CURRENT STATE
 - Words written so far: ${totalWords.toLocaleString()} / ${targetWords.toLocaleString()} (${progressPct}%)
 - You are writing BATCH ${blueprint.number} of ${bible.totalBatches}
 ${isFinalBatch ? "- THIS IS THE FINAL BATCH. The story MUST END. Land the climax and place the closing image." : ""}
+${critiqueFixes ? `\n# MANDATORY CRITIQUE FIXES\n${critiqueFixes}\n` : ""}
+# YOUR TASK
+Write batch ${blueprint.number} now. Hit every blueprint beat. Obey blueprint canon. Return structured output: prose, summary, openThreads, stateDelta.`;
+}
 
-# USER'S ORIGINAL IDEA (for flavor reference only — canon is the blueprint)
-${input.idea}
+// ════════════════════════════════════════════════════════════════
+// CRITIC / REVISE / VERIFY PROMPTS — chapter-close quality gate
+// ════════════════════════════════════════════════════════════════
+
+export function buildCriticSystemPrompt(): string {
+  return `You are Folio's continuity critic. You review ONE completed chapter.
+
+Judge only for high-severity continuity breaks or clearly missed chapter beats from the plan.
+- verdict "revise" ONLY when there is a high-severity continuity break OR a clearly missed chapter beat.
+- Low/medium issues alone must yield verdict "pass".
+- batchNumber on each issue MUST be an absolute 1-based manuscript batch number from the allowed list.
+- Be concise. Do not rewrite prose. Do not invent new plot.
+
+No em dashes in your text fields.`;
+}
+
+export function buildCriticUserPrompt(params: {
+  chapterPlan: {
+    number: number;
+    title: string;
+    summary: string;
+    arcPurpose: string;
+    openingHook: string;
+    closingBeat: string;
+  };
+  blueprints: {
+    number: number;
+    purpose: string;
+    scenes: string[];
+    continuityFlags: string[];
+  }[];
+  batchSummaries: { batchNumber: number; summary: string }[];
+  allowedBatchNumbers: number[];
+  storyStateBeforeText: string;
+  storyStateAfterText: string;
+  excerpts: { opening: string; middle: string; ending: string };
+}): string {
+  const {
+    chapterPlan,
+    blueprints,
+    batchSummaries,
+    allowedBatchNumbers,
+    storyStateBeforeText,
+    storyStateAfterText,
+    excerpts,
+  } = params;
+  const summaryBlock = batchSummaries
+    .map((b) => `- Batch ${b.batchNumber}: ${b.summary}`)
+    .join("\n");
+  const blueprintBlock = blueprints
+    .map(
+      (b) =>
+        `### Batch ${b.number}\nPurpose: ${b.purpose}\nScenes: ${b.scenes.join("; ")}\nFlags: ${b.continuityFlags.join("; ") || "(none)"}`
+    )
+    .join("\n\n");
+
+  return `# CHAPTER PLAN
+- Chapter ${chapterPlan.number}: "${chapterPlan.title}"
+- Summary: ${chapterPlan.summary}
+- Arc purpose: ${chapterPlan.arcPurpose}
+- Opening hook: ${chapterPlan.openingHook}
+- Closing beat: ${chapterPlan.closingBeat}
+
+# ALLOWED ABSOLUTE BATCH NUMBERS (use only these in issues[].batchNumber)
+${allowedBatchNumbers.join(", ")}
+
+# BATCH BLUEPRINTS
+${blueprintBlock || "(none)"}
+
+# BATCH SUMMARIES FOR THIS CHAPTER
+${summaryBlock || "(none)"}
+
+# STORY STATE BEFORE CHAPTER
+${storyStateBeforeText}
+
+# STORY STATE AFTER CHAPTER
+${storyStateAfterText}
+
+# PROSE EXCERPTS (~1800 words total: opening / middle / ending)
+## Opening
+${excerpts.opening}
+
+## Middle
+${excerpts.middle}
+
+## Ending
+${excerpts.ending}
 
 # YOUR TASK
-Write batch ${blueprint.number} now. Hit every blueprint beat. Obey blueprint canon. Return structured output: prose, summary, openThreads.`;
+Return structured critique: issues (with absolute batchNumber), beatsMissed, verdict (pass|revise).`;
+}
+
+export function buildPlanAuditorSystemPrompt(): string {
+  return `You are Folio's plan auditor. Review a complete Book Blueprint before human approval.
+
+Flag only HIGH-severity structural/canon defects that require targeted repair:
+- batch/chapter coverage gaps or overlaps
+- incomplete ending / missing resolution
+- broken setup/payoff
+- invalid thread ledger (bad ids, impossible plant/resolve batches)
+- character arc inconsistency
+- POV/tense/style contradictions
+- concrete continuity flags that conflict
+- target-length infeasibility
+
+verdict "repair" ONLY when high-severity issues exist. Otherwise "pass".
+Be concise. No em dashes.`;
+}
+
+export function buildPlanAuditorUserPrompt(params: {
+  bible: StoryBible;
+  targetWords: number;
+}): string {
+  const { bible, targetWords } = params;
+  const chapterLines = bible.chapters
+    .map(
+      (c) =>
+        `- Ch ${c.number} "${c.title}" batches ${c.batchStart}-${c.batchEnd} (~${c.targetWords}w): ${c.summary}`
+    )
+    .join("\n");
+  const batchLines = bible.batches
+    .map(
+      (b) =>
+        `- B${b.number} Ch${b.chapterNumber} [${b.positionInChapter}] ${b.purpose}`
+    )
+    .join("\n");
+  const ledger = (bible.threadLedger ?? [])
+    .map(
+      (t) =>
+        `- [${t.id}] plant ${t.plantBatch} resolveBy ${t.resolveByBatch}: ${t.description}`
+    )
+    .join("\n");
+
+  return `# TARGET WORDS
+${targetWords}
+
+# TITLE / LOGLINE
+${bible.title} — ${bible.logline}
+
+# STRUCTURE
+${bible.structure.actBreakdown}
+Inciting: ${bible.structure.inciting}
+Midpoint: ${bible.structure.midpoint}
+Climax: ${bible.structure.climax}
+Resolution: ${bible.structure.resolution}
+
+# VOICE / STYLE
+${bible.voiceGuide}
+${bible.styleGuide}
+
+# CHARACTERS
+${bible.characters.map((c) => `- ${c.name} (${c.role}): arc=${c.arc}`).join("\n")}
+
+# CHAPTERS (${bible.chapters.length})
+${chapterLines}
+
+# BATCHES (${bible.batches.length} / totalBatches=${bible.totalBatches})
+${batchLines}
+
+# THREAD LEDGER
+${ledger || "(empty)"}
+
+# YOUR TASK
+Return structured audit: issues, verdict (pass|repair), summary.`;
+}
+
+export function buildPlanRepairSystemPrompt(): string {
+  return `You are Folio's plan repair specialist. Apply TARGETED fixes only.
+
+Return complete replacement objects for flagged chapters, batches, and/or thread ledger entries.
+Do NOT rewrite the entire bible. Use stable chapter numbers, batch numbers, and thread ids.
+No em dashes.`;
+}
+
+export function buildPlanRepairUserPrompt(params: {
+  bible: StoryBible;
+  issues: PlanAuditIssue[];
+}): string {
+  const { bible, issues } = params;
+  const issueLines = issues
+    .map(
+      (issue, index) =>
+        `${index + 1}. [${issue.category}] chapter=${issue.chapterNumber ?? "n/a"} batch=${issue.batchNumber ?? "n/a"}\n   ${issue.repairInstruction}`
+    )
+    .join("\n");
+  return `# HIGH-SEVERITY AUDIT ISSUES (repair exactly these)
+${issueLines || "(none; return null replacement arrays)"}
+
+# CURRENT BIBLE (JSON excerpt — repair by replacement entries)
+Title: ${bible.title}
+Chapters: ${bible.chapters.length}
+Batches: ${bible.batches.length}
+Thread ledger entries: ${(bible.threadLedger ?? []).length}
+
+Chapters JSON:
+${JSON.stringify(bible.chapters)}
+
+Batches JSON:
+${JSON.stringify(bible.batches)}
+
+Thread ledger JSON:
+${JSON.stringify(bible.threadLedger ?? [])}
+
+# YOUR TASK
+Return chapterReplacements / batchReplacements / threadLedgerReplacements as complete objects for items that need fixing (or null arrays if none).`;
+}
+
+export function buildRevisionVerifierSystemPrompt(): string {
+  return `You verify whether a single revised batch fixed the critique issues.
+
+Return fixed=true only if the mandatory issues appear addressed.
+List any remainingIssues briefly. Do NOT request another revision.
+No em dashes.`;
+}
+
+export function buildRevisionVerifierUserPrompt(params: {
+  batchNumber: number;
+  chapterNumber: number;
+  issues: { description: string; severity: string; batchNumber: number }[];
+  beatsMissed: string[];
+  summary: string;
+  excerpt: string;
+  storyStateBeforeText: string;
+  storyStateAfterText: string;
+}): string {
+  const {
+    batchNumber,
+    chapterNumber,
+    issues,
+    beatsMissed,
+    summary,
+    excerpt,
+    storyStateBeforeText,
+    storyStateAfterText,
+  } = params;
+  return `# REVISED BATCH ${batchNumber} (chapter ${chapterNumber})
+
+# ORIGINAL ISSUES
+${issues.map((i) => `- [${i.severity}] batch ${i.batchNumber}: ${i.description}`).join("\n")}
+
+# MISSED BEATS
+${beatsMissed.map((b) => `- ${b}`).join("\n") || "(none)"}
+
+# REVISED SUMMARY
+${summary}
+
+# EXCERPT
+${excerpt}
+
+# STORY STATE BEFORE BATCH
+${storyStateBeforeText}
+
+# STORY STATE THROUGH REVISED BATCH
+${storyStateAfterText}
+
+# YOUR TASK
+Return fixed, remainingIssues, notes.`;
 }

@@ -82,6 +82,14 @@ export interface BatchBlueprint {
   targetWords: number;
 }
 
+/** Planned canonical thread ledger entry (v3 bibles). */
+export interface ThreadLedgerEntry {
+  id: string;
+  description: string;
+  plantBatch: number;
+  resolveByBatch: number;
+}
+
 export interface StoryBible {
   title: string;
   synopsis: string;          // 2–4 sentence back-cover summary
@@ -106,10 +114,58 @@ export interface StoryBible {
   styleGuide: string;        // descriptive density, dialogue ratio, etc.
   chapters: ChapterPlan[];
   batches: BatchBlueprint[];
+  /** Planned thread IDs for exact open/resolve semantics (v3; default []). */
+  threadLedger?: ThreadLedgerEntry[];
   totalBatches: number;
   targetWords: number;
   createdAt: string;
 }
+
+// ─── Story state (rolling continuity ledger) ─────────────────
+
+export interface StoryStateCharacter {
+  name: string;
+  status: string;
+}
+
+export interface StoryStateThread {
+  id: string;
+  description: string;
+  openedBatch: number;
+}
+
+export interface StoryState {
+  facts: string[];
+  characters: StoryStateCharacter[];
+  /** Canonical open threads — structured IDs (legacy string[] normalized on read). */
+  openThreads: StoryStateThread[];
+}
+
+export interface ThreadOpened {
+  id: string;
+  description: string;
+  openedBatch?: number;
+}
+
+export interface ThreadResolved {
+  id: string;
+}
+
+export interface StateDelta {
+  newFacts: string[];
+  characterUpdates: StoryStateCharacter[];
+  /** Prefer {id, description}; legacy string[] accepted via normalizeStateDelta. */
+  threadsOpened: ThreadOpened[];
+  threadsResolved: ThreadResolved[];
+}
+
+export {
+  emptyStoryState,
+  mergeStoryStateDelta,
+  STORY_STATE_FACT_CAP,
+  rebuildStoryStateFromDeltas,
+  rebuildStoryStateBeforeBatch,
+} from "./story-state";
 
 // ─── Batch / events / project ────────────────────────────────
 
@@ -118,6 +174,12 @@ export interface Batch {
   chapterNumber?: number;
   chapterTitle?: string;
   chapterSummary?: string;   // summary of what THIS batch did
+  /** Legacy display string; canonical threads live in stateDelta / StoryState. */
+  openThreads?: string;
+  /** Exact accepted writer/reviser StateDelta for this batch (canonical rebuild source). */
+  stateDelta?: StateDelta;
+  /** Last applied revision key (idempotent revise replay). */
+  lastRevisionKey?: string;
   prose: string;
   wordCount: number;
   createdAt: string;
@@ -139,11 +201,16 @@ export type BatchEventType =
   | "planning_spine_complete"
   | "planning_batches_progress"
   | "planning_complete"
+  | "plan_audit"
+  | "plan_repaired"
   | "cover_start"
   | "cover_complete"
   | "cover_failed"
   | "batch_start"
   | "batch_complete"
+  | "chapter_critique"
+  | "batch_revised"
+  | "revision_verified"
   | "project_complete"
   | "project_failed"
   | "project_cancelled";
@@ -166,6 +233,12 @@ export interface BatchEvent {
   completedBatches?: number;
   /** Staged planning: total blueprint rows planned for the manuscript */
   plannedBatchesTotal?: number;
+  /** Critique / revise */
+  chapterNumber?: number;
+  verdict?: "pass" | "revise" | "repair" | "warning";
+  issueCount?: number;
+  /** Revision verifier */
+  fixed?: boolean;
 }
 
 export type ProjectStatus =
@@ -186,6 +259,10 @@ export interface BookProject {
   input: ProjectInput;
   status: ProjectStatus;
   bible?: StoryBible;
+  storyState?: StoryState;
+  /** Snapshotted at createProject — agents must use this, not live env. */
+  pipelineVersion?: string;
+  modelConfig?: import("./model-config").ProjectPipelineConfig;
   batches: Batch[];
   events: BatchEvent[];
   targetWords: number;
@@ -212,8 +289,98 @@ export interface FullContext {
   currentBatchNumber: number;
 }
 
-export type GenerationJobType = "plan" | "plan_batches" | "write" | "cover";
+export type GenerationJobType =
+  | "plan"
+  | "plan_batches"
+  | "plan_audit"
+  | "plan_repair"
+  | "write"
+  | "cover"
+  | "critique_chapter"
+  | "revise_batch"
+  | "verify_revision";
 export type GenerationJobStatus = "queued" | "running" | "complete" | "failed";
+
+export interface WriteJobPayload {
+  /** Absolute 1-based batch number into bible.batches[batchNumber-1]. */
+  batchNumber: number;
+}
+
+export interface CritiqueChapterPayload {
+  chapterNumber: number;
+  /** When true, complete the project after critique/revise/verify instead of enqueueing the next write. */
+  isFinalChapter?: boolean;
+}
+
+export interface CritiqueIssue {
+  description: string;
+  severity: "low" | "medium" | "high";
+  /** Absolute 1-based batch number within the manuscript. */
+  batchNumber: number;
+}
+
+export interface ReviseBatchPayload {
+  batchNumber: number;
+  chapterNumber: number;
+  issues: CritiqueIssue[];
+  beatsMissed: string[];
+  isFinalChapter?: boolean;
+  /** Deterministic revision key for idempotent replace. */
+  revisionKey?: string;
+}
+
+export interface VerifyRevisionPayload {
+  batchNumber: number;
+  chapterNumber: number;
+  issues: CritiqueIssue[];
+  beatsMissed: string[];
+  isFinalChapter?: boolean;
+  revisionKey?: string;
+}
+
+export interface PlanJobPayload {
+  /** Namespace shared by every planning stage for one initial/replan run. */
+  planningRunId?: string;
+}
+
+export interface PlanAuditPayload {
+  pass: number;
+  planningRunId?: string;
+}
+
+export interface PlanAuditIssue {
+  severity: "low" | "medium" | "high";
+  category:
+    | "coverage"
+    | "ending"
+    | "setup_payoff"
+    | "thread_ledger"
+    | "character_arc"
+    | "pov_tense_style"
+    | "continuity"
+    | "length"
+    | "other";
+  chapterNumber: number | null;
+  batchNumber: number | null;
+  repairInstruction: string;
+}
+
+export interface PlanRepairPayload {
+  pass?: number;
+  planningRunId?: string;
+  /** Bounded to high-severity audit findings only. */
+  issues: PlanAuditIssue[];
+}
+
+export type GenerationJobPayload =
+  | PlanJobPayload
+  | WriteJobPayload
+  | CritiqueChapterPayload
+  | ReviseBatchPayload
+  | VerifyRevisionPayload
+  | PlanAuditPayload
+  | PlanRepairPayload
+  | Record<string, unknown>;
 
 export interface GenerationJob {
   id: string;
@@ -226,6 +393,9 @@ export interface GenerationJob {
   startedAt?: string;
   completedAt?: string;
   error?: string;
+  payload?: GenerationJobPayload;
+  /** Deterministic idempotency key (unique per project when set). */
+  dedupeKey?: string;
   createdAt: string;
   updatedAt: string;
 }
