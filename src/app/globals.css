@@ -208,7 +208,8 @@ body {
 
 .prose-book p { margin-bottom: 1.4em; }
 
-.prose-book p:first-of-type::first-letter {
+/* Drop cap targets the first substantive body paragraph — see reader-opening helpers */
+.prose-book p.prose-chapter-opening::first-letter {
   font-size: 3.2em;
   font-weight: 700;
   float: left;

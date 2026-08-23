@@ -1,6 +1,17 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef, useMemo, useCallback, type Dispatch, type SetStateAction, type WheelEvent } from "react";
+import {
+  Suspense,
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  type CSSProperties,
+  type Dispatch,
+  type SetStateAction,
+  type WheelEvent,
+} from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -32,6 +43,10 @@ import {
 import { sampleBook, type Book, type Chapter } from "@/lib/sampleData";
 import { getExtraExampleBookById } from "@/lib/exampleReaderBooks";
 import { stripEmDashes } from "@/lib/agent/sanitize";
+import {
+  firstChapterDropCapParagraphIndex,
+  splitDropCapLeadingSpan,
+} from "@/lib/reader-opening";
 import { cn } from "@/lib/utils";
 import AccountMenu from "@/components/AccountMenu";
 import { useAuthUser } from "@/hooks/useAuthUser";
@@ -501,6 +516,36 @@ function projectToBook(p: ApiProject): Book {
 }
 
 // ─── Kindle Reader ────────────────────────────────────────────
+const BOOK_DROP_CAP_INLINE: CSSProperties = {
+  fontSize: "2.8em",
+  fontWeight: 700,
+  float: "left",
+  lineHeight: 0.75,
+  marginRight: "0.07em",
+  marginTop: "0.08em",
+  color: "#C97D30",
+  fontFamily: "var(--font-playfair, Georgia, serif)",
+};
+
+function BookParagraphWithConditionalDropCap({
+  text,
+  useDropCap,
+}: {
+  text: string;
+  useDropCap: boolean;
+}) {
+  if (!useDropCap) return <>{text}</>;
+  const part = splitDropCapLeadingSpan(text);
+  if (!part) return <>{text}</>;
+  return (
+    <>
+      {part.prefix}
+      <span style={BOOK_DROP_CAP_INLINE}>{part.letter}</span>
+      {part.remainder}
+    </>
+  );
+}
+
 function KindleReader({
   pages,
   currentPage,
@@ -542,6 +587,15 @@ function KindleReader({
   }, [currentPage]);
 
   const progressPct = pages.length > 1 ? (currentPage / (pages.length - 1)) * 100 : 100;
+
+  const kindleDropCapIndex = page.isCover
+    ? -1
+    : firstChapterDropCapParagraphIndex(
+        page.paragraphs,
+        page.isChapterStart,
+        page.chapterNumber,
+        page.chapterTitle
+      );
 
   return (
     <div className="flex flex-col h-full">
@@ -615,7 +669,13 @@ function KindleReader({
                       }}
                     >
                       {page.paragraphs.map((para, i) => (
-                        <p key={i} className={!page.isChapterStart && i === 0 ? "mt-0" : ""}>
+                        <p
+                          key={i}
+                          className={cn(
+                            !page.isChapterStart && i === 0 ? "mt-0" : "",
+                            kindleDropCapIndex === i ? "prose-chapter-opening" : ""
+                          )}
+                        >
                           {para}
                         </p>
                       ))}
@@ -1092,6 +1152,14 @@ function BookPageContent({
   if (page.isCover) {
     return <CoverPageContent page={page} immersive={immersive} />;
   }
+
+  const bookDropCapIndex = firstChapterDropCapParagraphIndex(
+    page.paragraphs,
+    page.isChapterStart,
+    page.chapterNumber,
+    page.chapterTitle
+  );
+
   return (
     <div
       className="w-full h-full overflow-hidden flex flex-col"
@@ -1140,27 +1208,10 @@ function BookPageContent({
                 marginBottom: "0.9em",
               }}
             >
-              {page.isChapterStart && i === 0 ? (
-                <>
-                  <span
-                    style={{
-                      fontSize: "2.8em",
-                      fontWeight: 700,
-                      float: "left",
-                      lineHeight: 0.75,
-                      marginRight: "0.07em",
-                      marginTop: "0.08em",
-                      color: "#C97D30",
-                      fontFamily: "var(--font-playfair, Georgia, serif)",
-                    }}
-                  >
-                    {para[0]}
-                  </span>
-                  {para.slice(1)}
-                </>
-              ) : (
-                para
-              )}
+              <BookParagraphWithConditionalDropCap
+                text={para}
+                useDropCap={bookDropCapIndex === i}
+              />
             </p>
           ))}
         </div>
