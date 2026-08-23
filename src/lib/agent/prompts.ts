@@ -597,7 +597,8 @@ export function buildCriticUserPrompt(params: {
   allowedBatchNumbers: number[];
   storyStateBeforeText: string;
   storyStateAfterText: string;
-  excerpts: { opening: string; middle: string; ending: string };
+  /** The complete chapter. Sampling excerpts hid four fifths of the text. */
+  chapterProse: string;
 }): string {
   const {
     chapterPlan,
@@ -606,7 +607,7 @@ export function buildCriticUserPrompt(params: {
     allowedBatchNumbers,
     storyStateBeforeText,
     storyStateAfterText,
-    excerpts,
+    chapterProse,
   } = params;
   const summaryBlock = batchSummaries
     .map((b) => `- Batch ${b.batchNumber}: ${b.summary}`)
@@ -640,18 +641,11 @@ ${storyStateBeforeText}
 # STORY STATE AFTER CHAPTER
 ${storyStateAfterText}
 
-# PROSE EXCERPTS (~1800 words total: opening / middle / ending)
-## Opening
-${excerpts.opening}
-
-## Middle
-${excerpts.middle}
-
-## Ending
-${excerpts.ending}
+# FULL CHAPTER PROSE
+${chapterProse}
 
 # YOUR TASK
-Return structured critique: issues (with absolute batchNumber), beatsMissed, verdict (pass|revise).`;
+Read the entire chapter above, then return structured critique: issues (with absolute batchNumber), beatsMissed, verdict (pass|revise).`;
 }
 
 export function buildPlanAuditorSystemPrompt(): string {
@@ -772,8 +766,11 @@ Return chapterReplacements / batchReplacements / threadLedgerReplacements as com
 export function buildRevisionVerifierSystemPrompt(): string {
   return `You verify whether a single revised batch fixed the critique issues.
 
-Return fixed=true only if the mandatory issues appear addressed.
-List any remainingIssues briefly. Do NOT request another revision.
+You are reading the complete revised batch, so absence of a fix is evidence, not
+uncertainty. Return fixed=true only if the mandatory issues appear addressed.
+List any remainingIssues briefly. Reporting fixed=false may trigger exactly one
+more revision attempt, so do not report false unless you can name what is still
+wrong.
 No em dashes.`;
 }
 
@@ -783,7 +780,8 @@ export function buildRevisionVerifierUserPrompt(params: {
   issues: { description: string; severity: string; batchNumber: number }[];
   beatsMissed: string[];
   summary: string;
-  excerpt: string;
+  /** The complete revised batch. A 400-word excerpt could not see a fix made later in the text. */
+  revisedProse: string;
   storyStateBeforeText: string;
   storyStateAfterText: string;
 }): string {
@@ -793,7 +791,7 @@ export function buildRevisionVerifierUserPrompt(params: {
     issues,
     beatsMissed,
     summary,
-    excerpt,
+    revisedProse,
     storyStateBeforeText,
     storyStateAfterText,
   } = params;
@@ -808,8 +806,8 @@ ${beatsMissed.map((b) => `- ${b}`).join("\n") || "(none)"}
 # REVISED SUMMARY
 ${summary}
 
-# EXCERPT
-${excerpt}
+# FULL REVISED PROSE
+${revisedProse}
 
 # STORY STATE BEFORE BATCH
 ${storyStateBeforeText}

@@ -327,6 +327,8 @@ export interface ReviseBatchPayload {
   isFinalChapter?: boolean;
   /** Deterministic revision key for idempotent replace. */
   revisionKey?: string;
+  /** 1 for the first revision, 2 for the single retry after a failed verification. */
+  revisionAttempt?: number;
 }
 
 export interface VerifyRevisionPayload {
@@ -336,6 +338,8 @@ export interface VerifyRevisionPayload {
   beatsMissed: string[];
   isFinalChapter?: boolean;
   revisionKey?: string;
+  /** 1 for the first revision, 2 for the single retry after a failed verification. */
+  revisionAttempt?: number;
 }
 
 export interface PlanJobPayload {

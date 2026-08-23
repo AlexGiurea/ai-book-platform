@@ -88,7 +88,7 @@ npm run test:cover-image
 | `OPENAI_PLAN_AUDITOR_MODEL` | No | Plan auditor (Terra). Default `gpt-5.6-terra`. |
 | `OPENAI_WRITER_MODEL_FREE` | No | Free writer. Default `gpt-5.6-luna`. |
 | `OPENAI_WRITER_MODEL_PRO` | No | Pro writer (Literary Sol). Default `gpt-5.6-sol`. Set to `gpt-5.6-terra` for optional Balanced Pro. |
-| `OPENAI_CRITIC_MODEL` | No | Chapter critic. Default `gpt-5.6-luna`. |
+| `OPENAI_CRITIC_MODEL` | No | Chapter critic. Default `gpt-5.6-terra`. |
 | `OPENAI_REVISE_MODEL_FREE` | No | Free reviser. Default `gpt-5.6-luna`. |
 | `OPENAI_REVISE_MODEL_PRO` | No | Pro reviser. Default `gpt-5.6-sol` (stays Sol even if writer is Terra). |
 | `OPENAI_REVISION_VERIFIER_MODEL` | No | Post-revise verifier. Default `gpt-5.6-luna`. |
@@ -116,7 +116,7 @@ Generation uses **pipeline version `v3`**. Role models and the pipeline version 
 | plan_auditor | `gpt-5.6-terra` | `OPENAI_PLAN_AUDITOR_MODEL` |
 | writer (Free) | `gpt-5.6-luna` | `OPENAI_WRITER_MODEL_FREE` → legacy `OPENAI_FREE_MODEL` |
 | writer (Pro Literary) | `gpt-5.6-sol` | `OPENAI_WRITER_MODEL_PRO` → legacy `OPENAI_PRO_MODEL` / `OPENAI_MODEL` |
-| critic | `gpt-5.6-luna` | `OPENAI_CRITIC_MODEL` |
+| critic | `gpt-5.6-terra` | `OPENAI_CRITIC_MODEL` |
 | revise (Free) | `gpt-5.6-luna` | `OPENAI_REVISE_MODEL_FREE` |
 | revise (Pro) | `gpt-5.6-sol` | `OPENAI_REVISE_MODEL_PRO` |
 | revision_verifier | `gpt-5.6-luna` | `OPENAI_REVISION_VERIFIER_MODEL` |
@@ -127,6 +127,8 @@ Generation uses **pipeline version `v3`**. Role models and the pipeline version 
 ### Job flow
 
 `plan` → (`plan_batches`…)? → `plan_audit` → (`plan_repair` → `plan_audit:2`)? → `awaiting_approval` → `write:N` → (chapter close) `critique` → (`revise` → `verify_revision`)? → next `write` / `complete`. Cover runs in parallel after approval.
+
+The critic reads the **complete chapter** and the verifier the **complete revised batch** — both sampled excerpts before, which hid most of the text. When the verifier reports the fix did not land, the batch gets **exactly one more revision attempt** (`MAX_REVISION_ATTEMPTS = 2`) targeting the remaining issues, then ships regardless. Retry jobs carry an `a2` key suffix; attempt 1 keeps the unsuffixed key so in-flight books are unaffected.
 
 ### Prompt caching / billing caveat (GPT-5.6)
 

@@ -5,6 +5,7 @@ import { isGenerationCancelled } from "./generation-errors";
 import {
   INITIAL_PLANNING_RUN_ID,
   JobKeys,
+  MAX_REVISION_ATTEMPTS,
   normalizePlanningRunId,
   revisionKeyFor,
 } from "./job-keys";
@@ -480,10 +481,10 @@ export class BookComposer {
           if (!allowed.has(flagged)) {
             flagged = chapterBatches.at(-1)?.batchNumber ?? flagged;
           }
-          const revKey = revisionKeyFor(payload.chapterNumber, flagged);
+          const revKey = revisionKeyFor(payload.chapterNumber, flagged, 1);
           await store.enqueueJob(projectId, "revise_batch", {
             force: true,
-            dedupeKey: JobKeys.revise(payload.chapterNumber, flagged),
+            dedupeKey: JobKeys.revise(payload.chapterNumber, flagged, 1),
             payload: {
               batchNumber: flagged,
               chapterNumber: payload.chapterNumber,
@@ -491,6 +492,7 @@ export class BookComposer {
               beatsMissed: critique.beatsMissed,
               isFinalChapter: payload.isFinalChapter,
               revisionKey: revKey,
+              revisionAttempt: 1,
             } satisfies ReviseBatchPayload,
           });
           return "queued";
@@ -541,11 +543,13 @@ export class BookComposer {
       });
     }
 
+    const attempt = payload.revisionAttempt ?? 1;
     await store.enqueueJob(projectId, "verify_revision", {
       force: true,
       dedupeKey: JobKeys.verifyRevision(
         payload.chapterNumber,
-        payload.batchNumber
+        payload.batchNumber,
+        attempt
       ),
       payload: {
         batchNumber: payload.batchNumber,
@@ -554,6 +558,7 @@ export class BookComposer {
         beatsMissed: payload.beatsMissed,
         isFinalChapter: payload.isFinalChapter,
         revisionKey: payload.revisionKey,
+        revisionAttempt: attempt,
       } satisfies VerifyRevisionPayload,
     });
     return "queued";
@@ -570,8 +575,11 @@ export class BookComposer {
     await store.assertNotCancelled(projectId);
     await store.updateStatus(projectId, "writing");
 
+    let verification: Awaited<
+      ReturnType<typeof revisionVerifierAgent.verify>
+    > | null = null;
     try {
-      await revisionVerifierAgent.verify(projectId, payload);
+      verification = await revisionVerifierAgent.verify(projectId, payload);
     } catch (err) {
       if (isGenerationCancelled(err)) throw err;
       const msg = err instanceof Error ? err.message : String(err);
@@ -583,6 +591,43 @@ export class BookComposer {
         verdict: "warning",
         error: msg,
       });
+    }
+
+    // A confirmed-unfixed batch used to ship as-is. Give it exactly one more
+    // attempt, targeting whatever the verifier says is still wrong.
+    const attempt = payload.revisionAttempt ?? 1;
+    if (verification && !verification.fixed && attempt < MAX_REVISION_ATTEMPTS) {
+      const nextAttempt = attempt + 1;
+      const remaining = verification.remainingIssues.length
+        ? verification.remainingIssues.map((description) => ({
+            description,
+            severity: "high" as const,
+            batchNumber: payload.batchNumber,
+          }))
+        : payload.issues;
+
+      await store.enqueueJob(projectId, "revise_batch", {
+        force: true,
+        dedupeKey: JobKeys.revise(
+          payload.chapterNumber,
+          payload.batchNumber,
+          nextAttempt
+        ),
+        payload: {
+          batchNumber: payload.batchNumber,
+          chapterNumber: payload.chapterNumber,
+          issues: remaining,
+          beatsMissed: payload.beatsMissed,
+          isFinalChapter: payload.isFinalChapter,
+          revisionKey: revisionKeyFor(
+            payload.chapterNumber,
+            payload.batchNumber,
+            nextAttempt
+          ),
+          revisionAttempt: nextAttempt,
+        } satisfies ReviseBatchPayload,
+      });
+      return "queued";
     }
 
     if (payload.isFinalChapter) {

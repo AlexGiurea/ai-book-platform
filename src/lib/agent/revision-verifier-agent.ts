@@ -25,12 +25,6 @@ import type { VerifyRevisionPayload } from "./types";
 
 const VERIFIER_MAX_OUTPUT_TOKENS = 1200;
 
-function takeWords(text: string, n: number): string {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  if (words.length <= n) return text.trim();
-  return words.slice(0, n).join(" ");
-}
-
 export class RevisionVerifierAgent {
   async verify(
     projectId: string,
@@ -79,7 +73,7 @@ export class RevisionVerifierAgent {
       issues: payload.issues,
       beatsMissed: payload.beatsMissed,
       summary: batch.chapterSummary ?? "(no summary)",
-      excerpt: takeWords(batch.prose, 400),
+      revisedProse: batch.prose,
       storyStateBeforeText: JSON.stringify(stateBefore),
       storyStateAfterText: JSON.stringify(stateThroughRevision),
     });
@@ -134,7 +128,7 @@ export class RevisionVerifierAgent {
       notes: parsed.notes ? stripEmDashes(parsed.notes) : null,
     };
 
-    // Never triggers a second revision — log pass/warning and continue.
+    // A false verdict may trigger exactly one more revision; the composer caps it.
     await store.appendEvent(projectId, {
       type: "revision_verified",
       batchNumber: payload.batchNumber,

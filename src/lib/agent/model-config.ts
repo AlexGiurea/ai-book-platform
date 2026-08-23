@@ -23,7 +23,7 @@ export const DEFAULT_ROLE_MODELS = {
   plan_auditor: "gpt-5.6-terra",
   writer_free: "gpt-5.6-luna",
   writer_pro: "gpt-5.6-sol",
-  critic: "gpt-5.6-luna",
+  critic: "gpt-5.6-terra",
   revise_free: "gpt-5.6-luna",
   revise_pro: "gpt-5.6-sol",
   revision_verifier: "gpt-5.6-luna",

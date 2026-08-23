@@ -18,39 +18,6 @@ import {
 import type { StoryState } from "./types";
 
 const CRITIC_MAX_OUTPUT_TOKENS = 2000;
-const EXCERPT_TOTAL_WORDS = 1800;
-
-function takeWords(text: string, n: number): string {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  if (words.length <= n) return text.trim();
-  return words.slice(0, n).join(" ");
-}
-
-function takeLastWords(text: string, n: number): string {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  if (words.length <= n) return text.trim();
-  return words.slice(-n).join(" ");
-}
-
-function middleExcerpt(text: string, n: number): string {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  if (words.length <= n) return text.trim();
-  const start = Math.max(0, Math.floor((words.length - n) / 2));
-  return words.slice(start, start + n).join(" ");
-}
-
-function buildThreeExcerpts(prose: string): {
-  opening: string;
-  middle: string;
-  ending: string;
-} {
-  const per = Math.floor(EXCERPT_TOTAL_WORDS / 3);
-  return {
-    opening: takeWords(prose, per),
-    middle: middleExcerpt(prose, per),
-    ending: takeLastWords(prose, per),
-  };
-}
 
 function serializeStoryStateCompact(state: StoryState | undefined): string {
   if (!state) return "(empty)";
@@ -109,7 +76,6 @@ export class CriticAgent {
       summary: b.chapterSummary ?? "(no summary)",
     }));
     const chapterProse = chapterBatches.map((b) => b.prose).join("\n\n");
-    const excerpts = buildThreeExcerpts(chapterProse);
 
     const client = getOpenAIClient();
     const model = getModelForProject(project, "critic");
@@ -134,7 +100,7 @@ export class CriticAgent {
       allowedBatchNumbers,
       storyStateBeforeText: serializeStoryStateCompact(stateBefore),
       storyStateAfterText: serializeStoryStateCompact(stateAfter),
-      excerpts,
+      chapterProse,
     });
 
     await store.assertNotCancelled(projectId);

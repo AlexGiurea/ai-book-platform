@@ -22,6 +22,7 @@ import { normalizeCriticBatchNumber } from "./critic-agent";
 import {
   INITIAL_PLANNING_RUN_ID,
   JobKeys,
+  MAX_REVISION_ATTEMPTS,
   normalizePlanningRunId,
   revisionKeyFor,
 } from "./job-keys";
@@ -574,5 +575,42 @@ describe("poison-job recovery decisions", () => {
     assert.equal(classifyExhaustedJob("revise_batch"), "quality_continue");
     assert.equal(classifyExhaustedJob("verify_revision"), "quality_continue");
     assert.equal(classifyExhaustedJob("cover"), "cover_fail");
+  });
+});
+
+describe("revision retry identity", () => {
+  it("keeps attempt 1 keys unsuffixed so in-flight books are unaffected", () => {
+    assert.equal(JobKeys.revise(3, 7), "revise:3:7");
+    assert.equal(JobKeys.revise(3, 7, 1), "revise:3:7");
+    assert.equal(JobKeys.verifyRevision(3, 7), "verify_revision:3:7");
+    assert.equal(revisionKeyFor(3, 7), "rev:3:7");
+    assert.equal(revisionKeyFor(3, 7, 1), "rev:3:7");
+  });
+
+  it("mints distinct job keys for the retry, or dedupe swallows it", () => {
+    assert.notEqual(JobKeys.revise(3, 7, 2), JobKeys.revise(3, 7, 1));
+    assert.notEqual(
+      JobKeys.verifyRevision(3, 7, 2),
+      JobKeys.verifyRevision(3, 7, 1)
+    );
+  });
+
+  it("mints a distinct revision key for the retry, or the writer no-ops", () => {
+    // writer-agent skips the model entirely when batch.lastRevisionKey matches,
+    // so a shared key would make attempt 2 a silent no-op that still bills a job.
+    assert.notEqual(revisionKeyFor(3, 7, 2), revisionKeyFor(3, 7, 1));
+  });
+
+  it("caps revision at one retry", () => {
+    assert.equal(MAX_REVISION_ATTEMPTS, 2);
+  });
+
+  it("does not collide across chapters or batches at the same attempt", () => {
+    const keys = new Set([
+      revisionKeyFor(3, 7, 2),
+      revisionKeyFor(3, 8, 2),
+      revisionKeyFor(4, 7, 2),
+    ]);
+    assert.equal(keys.size, 3);
   });
 });
