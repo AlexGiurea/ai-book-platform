@@ -25,6 +25,7 @@ import {
   getProjectPipelineConfig,
 } from "./openai-client";
 import { store } from "./context-store";
+import { asTruncation } from "./response-guard";
 import { toGenerationCancelled } from "./generation-errors";
 import { BookAuditOutputSchema, type BookAuditOutputParsed } from "./schemas";
 import {
@@ -39,7 +40,12 @@ import {
 } from "@/lib/quality/manuscript-checks";
 import type { Batch, BookProject, BookRepairIssue } from "./types";
 
-const BOOK_AUDITOR_MAX_OUTPUT_TOKENS = 4000;
+/**
+ * Ceiling covering reasoning tokens AND visible output. Sized with headroom for
+ * reasoning: a budget that fits only the output truncates the JSON mid-string.
+ * This is a ceiling, not spend — only tokens actually generated are billed.
+ */
+const BOOK_AUDITOR_MAX_OUTPUT_TOKENS = 16000;
 
 export interface BookAuditResult {
   audit: BookAuditOutputParsed;
@@ -191,7 +197,7 @@ export class BookAuditorAgent {
     } catch (err) {
       const c = toGenerationCancelled(err);
       if (c) throw c;
-      throw err;
+      throw asTruncation(err, "book_auditor", BOOK_AUDITOR_MAX_OUTPUT_TOKENS);
     }
     const durationMs = Date.now() - started;
 

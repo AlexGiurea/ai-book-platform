@@ -9,6 +9,7 @@ import {
 import { PLANNER_TIMEOUT_MS } from "./constants";
 import { store, TARGET_BATCHES_PER_CHAPTER, WORDS_PER_BATCH } from "./context-store";
 import { toGenerationCancelled } from "./generation-errors";
+import { asTruncation } from "./response-guard";
 import {
   BatchSegmentOutputSchema,
   StoryBibleSchema,
@@ -46,7 +47,12 @@ export const BLUEPRINT_SEGMENT_BATCH_COUNT = 10;
 
 // Upper bound for planner output. Large novel (~43 batches × ~300 tokens each)
 // plus bible overhead comfortably fits in 16k output tokens.
-const PLANNER_MAX_OUTPUT_TOKENS = 16000;
+/**
+ * Ceiling covering reasoning tokens AND visible output. Sized with headroom for
+ * reasoning: a budget that fits only the output truncates the JSON mid-string.
+ * This is a ceiling, not spend — only tokens actually generated are billed.
+ */
+const PLANNER_MAX_OUTPUT_TOKENS = 32000;
 
 type ChapterSpine = StoryBibleSpineParsed["chapters"][number];
 
@@ -289,7 +295,7 @@ export class PlannerAgent {
       }
       const c = toGenerationCancelled(err);
       if (c) throw c;
-      throw err;
+      throw asTruncation(err, "planner", PLANNER_MAX_OUTPUT_TOKENS);
     } finally {
       clearTimeout(timeout);
       clearInterval(heartbeat);
@@ -460,7 +466,7 @@ export class PlannerAgent {
           model,
           instructions,
           input,
-          max_output_tokens: Math.min(PLANNER_MAX_OUTPUT_TOKENS, 8000),
+          max_output_tokens: Math.min(PLANNER_MAX_OUTPUT_TOKENS, 16000),
           ...extras,
           text: {
             format: zodTextFormat(StoryBibleSpineSchema, "story_spine"),
@@ -479,7 +485,7 @@ export class PlannerAgent {
       }
       const c = toGenerationCancelled(err);
       if (c) throw c;
-      throw err;
+      throw asTruncation(err, "planner", PLANNER_MAX_OUTPUT_TOKENS);
     } finally {
       clearTimeout(timeout);
       clearInterval(heartbeat);
@@ -628,7 +634,7 @@ export class PlannerAgent {
       }
       const c = toGenerationCancelled(err);
       if (c) throw c;
-      throw err;
+      throw asTruncation(err, "planner", PLANNER_MAX_OUTPUT_TOKENS);
     } finally {
       clearTimeout(timeout);
     }

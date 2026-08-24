@@ -7,6 +7,7 @@ import {
   getProjectPipelineConfig,
 } from "./openai-client";
 import { store } from "./context-store";
+import { asTruncation } from "./response-guard";
 import { toGenerationCancelled } from "./generation-errors";
 import {
   PlanAuditOutputSchema,
@@ -15,7 +16,12 @@ import {
 import { buildPlanAuditorSystemPrompt, buildPlanAuditorUserPrompt } from "./prompts";
 import { stripEmDashes } from "./sanitize";
 
-const AUDITOR_MAX_OUTPUT_TOKENS = 2500;
+/**
+ * Ceiling covering reasoning tokens AND visible output. Sized with headroom for
+ * reasoning: a budget that fits only the output truncates the JSON mid-string.
+ * This is a ceiling, not spend — only tokens actually generated are billed.
+ */
+const AUDITOR_MAX_OUTPUT_TOKENS = 8000;
 
 export class PlanAuditorAgent {
   async auditPlan(projectId: string): Promise<PlanAuditOutputParsed> {
@@ -59,7 +65,7 @@ export class PlanAuditorAgent {
     } catch (err) {
       const c = toGenerationCancelled(err);
       if (c) throw c;
-      throw err;
+      throw asTruncation(err, "plan_auditor", AUDITOR_MAX_OUTPUT_TOKENS);
     }
     const durationMs = Date.now() - started;
 

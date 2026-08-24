@@ -7,6 +7,7 @@ import {
   getProjectPipelineConfig,
 } from "./openai-client";
 import { store } from "./context-store";
+import { asTruncation } from "./response-guard";
 import { toGenerationCancelled } from "./generation-errors";
 import { CritiqueOutputSchema, type CritiqueOutputParsed } from "./schemas";
 import { buildCriticSystemPrompt, buildCriticUserPrompt } from "./prompts";
@@ -17,7 +18,12 @@ import {
 } from "./story-state";
 import type { StoryState } from "./types";
 
-const CRITIC_MAX_OUTPUT_TOKENS = 2000;
+/**
+ * Ceiling covering reasoning tokens AND visible output. Sized with headroom for
+ * reasoning: a budget that fits only the output truncates the JSON mid-string.
+ * This is a ceiling, not spend — only tokens actually generated are billed.
+ */
+const CRITIC_MAX_OUTPUT_TOKENS = 8000;
 
 function serializeStoryStateCompact(state: StoryState | undefined): string {
   if (!state) return "(empty)";
@@ -130,7 +136,7 @@ export class CriticAgent {
     } catch (err) {
       const c = toGenerationCancelled(err);
       if (c) throw c;
-      throw err;
+      throw asTruncation(err, "critic", CRITIC_MAX_OUTPUT_TOKENS);
     }
     const durationMs = Date.now() - started;
 

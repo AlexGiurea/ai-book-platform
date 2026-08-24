@@ -7,6 +7,7 @@ import {
   getProjectPipelineConfig,
 } from "./openai-client";
 import { store } from "./context-store";
+import { asTruncation } from "./response-guard";
 import { toGenerationCancelled } from "./generation-errors";
 import {
   PlanRepairOutputSchema,
@@ -20,7 +21,12 @@ import type {
   ThreadLedgerEntry,
 } from "./types";
 
-const REPAIR_MAX_OUTPUT_TOKENS = 8000;
+/**
+ * Ceiling covering reasoning tokens AND visible output. Sized with headroom for
+ * reasoning: a budget that fits only the output truncates the JSON mid-string.
+ * This is a ceiling, not spend — only tokens actually generated are billed.
+ */
+const REPAIR_MAX_OUTPUT_TOKENS = 16000;
 
 export function validateBibleInvariants(bible: StoryBible): string[] {
   const errors: string[] = [];
@@ -221,7 +227,7 @@ export class PlanRepairAgent {
     } catch (err) {
       const c = toGenerationCancelled(err);
       if (c) throw c;
-      throw err;
+      throw asTruncation(err, "plan_repair", REPAIR_MAX_OUTPUT_TOKENS);
     }
     const durationMs = Date.now() - started;
 

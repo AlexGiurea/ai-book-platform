@@ -33,10 +33,18 @@ export const DEFAULT_ROLE_MODELS = {
 } as const;
 
 /** Reasoning defaults when the Responses API accepts `reasoning.effort`. */
+/**
+ * Reasoning effort per role. Reasoning tokens are billed at output rates AND
+ * count against max_output_tokens, so effort and budget must be chosen together.
+ *
+ * The planner ran at "high" and was unusable: it either exhausted a 16k output
+ * budget before emitting valid JSON, or ran past the 230s planner abort. Medium
+ * keeps real planning depth inside both limits.
+ */
 export const DEFAULT_REASONING_EFFORT: Record<LlmRole, ReasoningEffortLevel> = {
-  planner: "high",
+  planner: "medium",
   plan_auditor: "medium",
-  book_auditor: "high",
+  book_auditor: "medium",
   writer: "low",
   critic: "medium",
   revise: "medium",

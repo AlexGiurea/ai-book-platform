@@ -7,6 +7,7 @@ import {
   getProjectPipelineConfig,
 } from "./openai-client";
 import { store } from "./context-store";
+import { asTruncation } from "./response-guard";
 import { toGenerationCancelled } from "./generation-errors";
 import { BatchOutputSchema } from "./schemas";
 import { buildWriterSystemPrompt, buildWriterUserPrompt } from "./prompts";
@@ -20,7 +21,12 @@ import { computeLengthGuidance } from "./length-guidance";
 import type { BatchBlueprint, StateDelta, StoryBible } from "./types";
 
 /** Room for ~2,800 words + metadata + reasoning on GPT-5.6. */
-const WRITER_MAX_OUTPUT_TOKENS = 8000;
+/**
+ * Ceiling covering reasoning tokens AND visible output. Sized with headroom for
+ * reasoning: a budget that fits only the output truncates the JSON mid-string.
+ * This is a ceiling, not spend — only tokens actually generated are billed.
+ */
+const WRITER_MAX_OUTPUT_TOKENS = 12000;
 
 export interface BatchWriteResult {
   wordsInBatch: number;
@@ -188,7 +194,7 @@ export class WriterAgent {
     } catch (err) {
       const c = toGenerationCancelled(err);
       if (c) throw c;
-      throw err;
+      throw asTruncation(err, "writer", WRITER_MAX_OUTPUT_TOKENS);
     }
     const durationMs = Date.now() - started;
 
