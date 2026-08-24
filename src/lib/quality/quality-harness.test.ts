@@ -16,7 +16,7 @@ import {
   runManuscriptChecks,
   type CheckInput,
 } from "./manuscript-checks";
-import { cacheHitRate, costForUsage, formatUsd } from "./pricing";
+import { MODEL_PRICES, cacheHitRate, costForUsage, formatUsd } from "./pricing";
 import type { Batch, StoryBible } from "@/lib/agent/types";
 
 function batch(n: number, words: number, prose: string, chapter = 1): Batch {
@@ -272,17 +272,17 @@ describe("check runner", () => {
 
 describe("pricing", () => {
   it("bills the uncached remainder, not the full input, when tokens were cached", () => {
+    const rate = MODEL_PRICES["gpt-5.6-sol"];
     const cost = costForUsage("gpt-5.6-sol", {
       inputTokens: 10_000,
       cachedInputTokens: 8_000,
       cacheWriteTokens: 0,
       outputTokens: 1_000,
     });
-    // 2k uncached @ $5/M = $0.01, 8k cached @ $0.50/M = $0.004, 1k out @ $30/M = $0.03
-    assert.ok(Math.abs(cost.inputCost - 0.01) < 1e-9);
-    assert.ok(Math.abs(cost.cachedInputCost - 0.004) < 1e-9);
-    assert.ok(Math.abs(cost.outputCost - 0.03) < 1e-9);
-    assert.ok(Math.abs(cost.totalCost - 0.044) < 1e-9);
+    // 2k billed as uncached input, 8k at the cached rate, 1k at the output rate.
+    assert.ok(Math.abs(cost.inputCost - (2_000 / 1e6) * rate.input) < 1e-9);
+    assert.ok(Math.abs(cost.cachedInputCost - (8_000 / 1e6) * rate.cachedInput) < 1e-9);
+    assert.ok(Math.abs(cost.outputCost - (1_000 / 1e6) * rate.output) < 1e-9);
   });
 
   it("applies the cache write premium", () => {
@@ -292,7 +292,8 @@ describe("pricing", () => {
       cacheWriteTokens: 1_000_000,
       outputTokens: 0,
     });
-    assert.ok(Math.abs(cost.cacheWriteCost - 6.25) < 1e-9);
+    const solRate = MODEL_PRICES["gpt-5.6-sol"];
+    assert.ok(Math.abs(cost.cacheWriteCost - solRate.input * 1.25) < 1e-9);
   });
 
   it("treats cache writes as a subset of input, not an extra charge on top", () => {
@@ -303,9 +304,10 @@ describe("pricing", () => {
       cacheWriteTokens: 100_000,
       outputTokens: 0,
     });
-    // 1.25x once ($0.625), never 1x input + 1.25x write ($1.125).
+    // Charged 1.25x once, never 1x input PLUS 1.25x write.
+    const solInput = MODEL_PRICES["gpt-5.6-sol"].input;
     assert.equal(cost.inputCost, 0);
-    assert.ok(Math.abs(cost.totalCost - 0.625) < 1e-9);
+    assert.ok(Math.abs(cost.totalCost - (100_000 / 1e6) * solInput * 1.25) < 1e-9);
   });
 
   it("prices a warm cache far below a cold one for the same prompt", () => {

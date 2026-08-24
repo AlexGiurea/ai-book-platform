@@ -4,7 +4,15 @@
  * figure externally, and add a `verifiedOn` bump whenever you refresh them.
  */
 
-export const PRICING_VERIFIED_ON = "2026-08-23";
+export const PRICING_VERIFIED_ON = "2026-08-24";
+
+/**
+ * GPT-5.6 Sol is on a promotional rate announced 21 August 2026: input $5 to $4,
+ * output $30 to $20, cached input $0.50 to $0.40. OpenAI stated it runs at least
+ * through 21 November 2026. Re-check before that date — if it reverts, every Sol
+ * figure in quality-runs/ shifts by roughly a third on the output side.
+ */
+export const SOL_PROMO_ENDS = "2026-11-21";
 
 export interface ModelPrice {
   /** USD per 1M uncached input tokens. */
@@ -24,7 +32,7 @@ export interface ModelPrice {
 export const CACHE_WRITE_MULTIPLIER = 1.25;
 
 export const MODEL_PRICES: Record<string, ModelPrice> = {
-  "gpt-5.6-sol": { input: 5.0, cachedInput: 0.5, output: 30.0, vendor: "openai" },
+  "gpt-5.6-sol": { input: 4.0, cachedInput: 0.4, output: 20.0, vendor: "openai" },
   "gpt-5.6-terra": { input: 2.0, cachedInput: 0.2, output: 12.0, vendor: "openai" },
   "gpt-5.6-luna": { input: 0.2, cachedInput: 0.02, output: 1.2, vendor: "openai" },
   "gpt-5.5": { input: 5.0, cachedInput: 0.5, output: 30.0, vendor: "openai" },
