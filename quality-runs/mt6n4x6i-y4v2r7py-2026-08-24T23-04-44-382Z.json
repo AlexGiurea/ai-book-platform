@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-24T23:04:44.382Z",
+  "project": {
+    "id": "mt6n4x6i-y4v2r7py",
+    "title": "Eleven Shares of Ash",
+    "plan": "pro",
+    "pipelineVersion": "v3",
+    "lengthPreset": "medium",
+    "targetWords": 40000,
+    "totalWords": 36725,
+    "batches": 14,
+    "modelConfig": {
+      "models": {
+        "cover": "gpt-image-2",
+        "critic": "gpt-5.6-terra",
+        "revise": "gpt-5.6-sol",
+        "writer": "gpt-5.6-sol",
+        "planner": "gpt-5.6-sol",
+        "book_auditor": "gpt-5.6-sol",
+        "plan_auditor": "gpt-5.6-terra",
+        "revision_verifier": "gpt-5.6-luna"
+      },
+      "configHash": "ce9be337",
+      "pipelineVersion": "v3"
+    }
+  },
+  "checks": {
+    "results": [
+      {
+        "id": "total-length",
+        "label": "Total length vs target",
+        "status": "pass",
+        "value": 0.918125,
+        "detail": "36,725 words against a 40,000 target (-8.2%)."
+      },
+      {
+        "id": "batch-length",
+        "label": "Per-batch length discipline",
+        "status": "pass",
+        "value": 0.9368622448979591,
+        "detail": "Batches average -6.3% under their blueprint target; 0 of 14 exceed it by more than 20%."
+      },
+      {
+        "id": "thread-resolution",
+        "label": "Planted threads resolved",
+        "status": "pass",
+        "value": 1,
+        "detail": "8 of 8 planned threads planted and resolved; 0 left open, 0 never planted."
+      },
+      {
+        "id": "character-presence",
+        "label": "Planned characters appear in the text",
+        "status": "pass",
+        "value": 1,
+        "detail": "11 of 11 planned characters appear in the manuscript."
+      },
+      {
+        "id": "em-dash-ban",
+        "label": "Em-dash ban held",
+        "status": "pass",
+        "value": 0,
+        "detail": "No em-dashes survived into the manuscript."
+      },
+      {
+        "id": "repeated-phrases",
+        "label": "Distinctive phrases not reused",
+        "status": "pass",
+        "value": 0,
+        "detail": "No 7-word phrase recurs 3 or more times."
+      },
+      {
+        "id": "chapter-balance",
+        "label": "Chapter length balance",
+        "status": "pass",
+        "value": 0.1556006870030441,
+        "detail": "Chapter lengths vary by 15.6% (shortest 5,091w, longest 8,265w across 5 chapters)."
+      }
+    ],
+    "passed": 7,
+    "warned": 0,
+    "failed": 0,
+    "skipped": 0
+  },
+  "cost": {
+    "priceListVerifiedOn": "2026-08-24",
+    "measured": true,
+    "totalUsd": 5.289738000000001,
+    "usdPerThousandWords": 0.14403643294758342,
+    "byRole": [
+      {
+        "role": "writer",
+        "model": "gpt-5.6-sol",
+        "calls": 14,
+        "tokens": {
+          "inputTokens": 437240,
+          "cachedInputTokens": 19800,
+          "cacheWriteTokens": 417398,
+          "outputTokens": 60676
+        },
+        "cacheHitRate": 0.04528405452383131,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.000168,
+          "cachedInputCost": 0.007920000000000002,
+          "cacheWriteCost": 2.08699,
+          "outputCost": 1.21352,
+          "totalCost": 3.308598
+        }
+      },
+      {
+        "role": "planner",
+        "model": "gpt-5.6-sol",
+        "calls": 4,
+        "tokens": {
+          "inputTokens": 26107,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 26095,
+          "outputTokens": 27202
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.000048,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.130475,
+          "outputCost": 0.54404,
+          "totalCost": 0.674563
+        }
+      },
+      {
+        "role": "revise",
+        "model": "gpt-5.6-sol",
+        "calls": 3,
+        "tokens": {
+          "inputTokens": 88957,
+          "cachedInputTokens": 1650,
+          "cacheWriteTokens": 87298,
+          "outputTokens": 13270
+        },
+        "cacheHitRate": 0.01854828737479906,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.000036,
+          "cachedInputCost": 0.00066,
+          "cacheWriteCost": 0.43649,
+          "outputCost": 0.2654,
+          "totalCost": 0.7025859999999999
+        }
+      },
+      {
+        "role": "book_auditor",
+        "model": "gpt-5.6-sol",
+        "calls": 1,
+        "tokens": {
+          "inputTokens": 51583,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 51580,
+          "outputTokens": 2152
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.000012,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.2579,
+          "outputCost": 0.043039999999999995,
+          "totalCost": 0.300952
+        }
+      },
+      {
+        "role": "critic",
+        "model": "gpt-5.6-terra",
+        "calls": 5,
+        "tokens": {
+          "inputTokens": 72284,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 72269,
+          "outputTokens": 2137
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-terra",
+          "priced": true,
+          "inputCost": 0.00003,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.1806725,
+          "outputCost": 0.025644,
+          "totalCost": 0.20634650000000002
+        }
+      },
+      {
+        "role": "plan_auditor",
+        "model": "gpt-5.6-terra",
+        "calls": 2,
+        "tokens": {
+          "inputTokens": 9291,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 9285,
+          "outputTokens": 2045
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-terra",
+          "priced": true,
+          "inputCost": 0.000012,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.0232125,
+          "outputCost": 0.02454,
+          "totalCost": 0.0477645
+        }
+      },
+      {
+        "role": "cover",
+        "model": "gpt-image-2",
+        "calls": 1,
+        "tokens": {
+          "inputTokens": 1282,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 0,
+          "outputTokens": 1372
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-image-2",
+          "priced": true,
+          "inputCost": 0.00641,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0,
+          "outputCost": 0.04116,
+          "totalCost": 0.04757
+        }
+      },
+      {
+        "role": "revision_verifier",
+        "model": "gpt-5.6-luna",
+        "calls": 1,
+        "tokens": {
+          "inputTokens": 4847,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 4844,
+          "outputTokens": 122
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-luna",
+          "priced": true,
+          "inputCost": 6.000000000000001e-7,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.0012110000000000003,
+          "outputCost": 0.00014639999999999998,
+          "totalCost": 0.0013580000000000003
+        }
+      }
+    ]
+  },
+  "judge": null
+}

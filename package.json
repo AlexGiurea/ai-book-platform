@@ -11,7 +11,8 @@
     "db:migrate": "node scripts/migrate.mjs",
     "notion:sync-books": "node scripts/sync-notion-books.mjs",
     "test:cover-image": "node scripts/test-cover-generation.mjs",
-    "quality:score": "tsx scripts/quality/score-book.ts"
+    "quality:score": "tsx scripts/quality/score-book.ts",
+    "quality:ab": "tsx scripts/quality/ab-granularity.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

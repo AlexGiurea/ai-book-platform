@@ -16,7 +16,17 @@ import type {
   WriteJobPayload,
 } from "./types";
 
-export async function processNextGenerationJob(userId?: string): Promise<{
+/**
+ * Claim and run one queued job.
+ *
+ * `userId` scopes to one account's projects; `projectId` narrows further to a
+ * single book, so two runs can share the queue without stealing each other's
+ * work. Both undefined means the global runner (cron).
+ */
+export async function processNextGenerationJob(
+  userId?: string,
+  projectId?: string
+): Promise<{
   processed: boolean;
   jobId?: string;
   projectId?: string;
@@ -24,12 +34,12 @@ export async function processNextGenerationJob(userId?: string): Promise<{
   status?: "complete" | "failed";
   error?: string;
 }> {
-  const exhausted = await store.reapExhaustedJobs(userId);
+  const exhausted = await store.reapExhaustedJobs(userId, projectId);
   for (const exhaustedJob of exhausted) {
     await recoverExhaustedJob(exhaustedJob);
   }
 
-  const job = await store.claimNextJob(userId);
+  const job = await store.claimNextJob(userId, projectId);
   if (!job) return { processed: false };
 
   await store.ensureProjectPipelineConfig(job.projectId);

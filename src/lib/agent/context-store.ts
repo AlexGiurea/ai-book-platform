@@ -1093,7 +1093,10 @@ export class ContextStore {
    * centralized project recovery. Bounded and idempotent: only rows transitioning
    * from queued/running are returned.
    */
-  async reapExhaustedJobs(userId?: string): Promise<GenerationJob[]> {
+  async reapExhaustedJobs(
+    userId?: string,
+    projectId?: string
+  ): Promise<GenerationJob[]> {
     const now = new Date().toISOString();
     const error = `Exceeded maximum attempts (${MAX_JOB_ATTEMPTS})`;
     if (!this.persistent) {
@@ -1101,6 +1104,7 @@ export class ContextStore {
       const exhausted: GenerationJob[] = [];
       for (const candidate of memory.jobs.values()) {
         if (exhausted.length >= 20) break;
+        if (projectId && candidate.projectId !== projectId) continue;
         const project = memory.projects.get(candidate.projectId);
         if (userId && project?.userId !== userId) continue;
         const eligible =
@@ -1117,6 +1121,30 @@ export class ContextStore {
         exhausted.push({ ...candidate });
       }
       return exhausted;
+    }
+
+    if (projectId) {
+      const scoped = (await getSql()`
+        update generation_jobs
+        set status = 'failed',
+            error = coalesce(error, ${error}),
+            completed_at = coalesce(completed_at, ${now}),
+            updated_at = ${now}
+        where id in (
+          select id
+          from generation_jobs
+          where project_id = ${projectId}
+            and attempts >= ${MAX_JOB_ATTEMPTS}
+            and (
+              status = 'queued'
+              or (status = 'running' and locked_at < now() - interval '6 minutes')
+            )
+          order by created_at asc
+          limit 20
+        )
+        returning *
+      `) as JobRow[];
+      return scoped.map(mapJob);
     }
 
     const rows = userId
@@ -1171,12 +1199,16 @@ export class ContextStore {
     return rows.map(mapJob);
   }
 
-  async claimNextJob(userId?: string): Promise<GenerationJob | undefined> {
+  async claimNextJob(
+    userId?: string,
+    projectId?: string
+  ): Promise<GenerationJob | undefined> {
     const now = new Date().toISOString();
     if (!this.persistent) {
       const staleMs = Date.now() - 6 * 60 * 1000;
       const job = Array.from(memory.jobs.values())
         .filter((candidate) => {
+          if (projectId && candidate.projectId !== projectId) return false;
           const project = memory.projects.get(candidate.projectId);
           if (userId && project?.userId !== userId) return false;
           if (candidate.attempts >= MAX_JOB_ATTEMPTS) return false;
@@ -1198,6 +1230,37 @@ export class ContextStore {
     }
 
     const sql = getSql();
+    // Project-scoped claiming lets two runs share one queue without stealing
+    // each other's jobs — used by the A/B harness, and by any future per-project
+    // worker. A project belongs to exactly one user, so projectId subsumes userId.
+    if (projectId) {
+      const scoped = (await sql`
+        update generation_jobs
+        set status = 'running',
+            attempts = attempts + 1,
+            locked_at = ${now},
+            started_at = coalesce(started_at, ${now}),
+            updated_at = ${now}
+        where id = (
+          select id from generation_jobs
+          where project_id = ${projectId}
+          and attempts < ${MAX_JOB_ATTEMPTS}
+          and (
+            (status = 'queued' and run_after <= now())
+            or (status = 'running' and locked_at < now() - interval '6 minutes')
+          )
+          order by created_at asc
+          limit 1
+        )
+        and (
+          status = 'queued'
+          or (status = 'running' and locked_at < now() - interval '6 minutes')
+        )
+        returning *
+      `) as JobRow[];
+      return scoped[0] ? mapJob(scoped[0]) : undefined;
+    }
+
     if (userId) {
       const rows = (await sql`
         update generation_jobs

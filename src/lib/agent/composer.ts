@@ -611,7 +611,13 @@ export class BookComposer {
         }
       }
       // Half-written chapter, or the call omitted this batch: fall through to the
-      // per-batch path, which is idempotent and will fill the gap.
+      // per-batch path, which is idempotent and will fill the gap. Loud, because
+      // a silent fallback turns a chapter-mode run into a batch-mode run and
+      // quietly invalidates any comparison between the two.
+      console.warn(
+        `[folio] chapter ${blueprint.chapterNumber} fell back to per-batch at batch ${batchNumber}` +
+          `${result.needsBatchFallback ? " (chapter partially written)" : " (section missing from response)"}`
+      );
     }
 
     // Idempotent replay: batch already present → skip model, continue orchestration.
