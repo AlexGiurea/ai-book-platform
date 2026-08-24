@@ -12,7 +12,7 @@ import {
   readContextTokenBudget,
   selectManuscriptWindow,
 } from "./writer-context";
-import { buildWriterUserPrompt } from "./prompts";
+import { buildWriterSystemPrompt, buildWriterUserPrompt } from "./prompts";
 import { computeLengthGuidance } from "./length-guidance";
 import type { Batch, BatchBlueprint, ProjectInput, StoryBible } from "./types";
 
@@ -197,9 +197,20 @@ describe("writer prompt ordering", () => {
     inputMode: "text",
   };
 
-  it("places the append-only manuscript before per-batch content", () => {
-    // Cache-critical. Anything that varies per call must come AFTER the
-    // manuscript, or the stable prefix ends early and cache reads collapse.
+  it("keeps the whole per-project canon in instructions, byte-identical per call", () => {
+    // Cache-critical, and measured: on the Responses API only `instructions`
+    // caches, and only on an exact byte match. `input` never caches, and a
+    // growing `instructions` caches nothing. So every token we want cached must
+    // live here AND be identical across all of a project's writer calls.
+    const bible = minimalBible();
+    const forBatch1 = buildWriterSystemPrompt({ bible, idea: input.idea });
+    const forBatch9 = buildWriterSystemPrompt({ bible, idea: input.idea });
+    assert.equal(forBatch1, forBatch9, "instructions differ between batches — cache will never hit");
+    assert.match(forBatch1, /# BOOK BLUEPRINT \(CANON/);
+    assert.match(forBatch1, /# USER'S ORIGINAL IDEA/);
+  });
+
+  it("keeps the canon out of input, where it could never be cached", () => {
     const prompt = buildWriterUserPrompt({
       input,
       bible: minimalBible(),
@@ -211,23 +222,34 @@ describe("writer prompt ordering", () => {
       totalWords: 8400,
       targetWords: 28000,
       length: computeLengthGuidance({
-        blueprintTargetWords: 2800,
-        batchNumber: 4,
-        totalBatches: 10,
-        wordsSoFar: 8400,
-        bookTargetWords: 28000,
+        blueprintTargetWords: 2800, batchNumber: 4, totalBatches: 10,
+        wordsSoFar: 8400, bookTargetWords: 28000,
       }),
     });
+    assert.ok(!prompt.includes("# BOOK BLUEPRINT"), "blueprint canon duplicated into input");
+    assert.ok(!prompt.includes("# USER'S ORIGINAL IDEA"), "idea duplicated into input");
+  });
 
+  it("still orders the manuscript ahead of per-call content", () => {
+    const prompt = buildWriterUserPrompt({
+      input,
+      bible: minimalBible(),
+      blueprint: minimalBlueprint(),
+      manuscriptBatches: batches(3),
+      summarizedBatches: [],
+      storyState: { facts: ["f"], characters: [], openThreads: [] },
+      isFinalBatch: false,
+      totalWords: 8400,
+      targetWords: 28000,
+      length: computeLengthGuidance({
+        blueprintTargetWords: 2800, batchNumber: 4, totalBatches: 10,
+        wordsSoFar: 8400, bookTargetWords: 28000,
+      }),
+    });
     const manuscriptAt = prompt.indexOf("# THE MANUSCRIPT SO FAR");
-    const blueprintAt = prompt.indexOf("# BLUEPRINT FOR THIS BATCH");
-    const storyStateAt = prompt.indexOf("# STORY STATE");
-    const currentStateAt = prompt.indexOf("# CURRENT STATE");
-
-    assert.ok(manuscriptAt > 0, "manuscript section missing");
-    assert.ok(manuscriptAt < blueprintAt, "per-batch blueprint precedes manuscript");
-    assert.ok(manuscriptAt < storyStateAt, "story state precedes manuscript");
-    assert.ok(manuscriptAt < currentStateAt, "current state precedes manuscript");
+    assert.ok(manuscriptAt >= 0, "manuscript section missing");
+    assert.ok(manuscriptAt < prompt.indexOf("# BLUEPRINT FOR THIS BATCH"));
+    assert.ok(manuscriptAt < prompt.indexOf("# CURRENT STATE"));
   });
 
   it("includes every batch's prose in full, not a summary", () => {

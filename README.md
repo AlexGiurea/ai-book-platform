@@ -178,6 +178,63 @@ There is deliberately **no retry-on-overlong** — a rewrite costs a full write
 call. Run `npm run quality:score` after the next generation and read the
 per-batch length check; add machinery only if the prompt change was not enough.
 
+### Writer context and prompt caching
+
+The writer receives the **entire manuscript written so far**, in full. A finished
+162,000-word book is roughly 216,000 tokens against a 1,050,000-token window, so
+it fits comfortably, and it is what lifted the judge's continuity score from 64
+to 82 on the first measured comparison.
+
+**It is not free, and an earlier version of this document claimed it was.**
+Measured against the live API:
+
+- Only the **`instructions`** field participates in prompt caching.
+- It caches only on an **exact byte match**. A growing `instructions` caches
+  nothing: a manuscript appended across four calls returned `cached=0` every time.
+- The **`input`** field never caches, in any shape — plain string or message
+  array, with or without `prompt_cache_key`. `prompt_cache_key` made no
+  measurable difference at all.
+- On GPT-5.6, cache **writes** cost **1.25x** uncached input, so content written
+  to a cache that never hits is billed at a 25% premium.
+
+There is therefore **no append-only-prefix discount on this API**. The consequence:
+
+- Everything byte-identical across a project's writer calls — the craft rules,
+  the blueprint canon, the user's idea — lives in `buildWriterSystemPrompt()` so
+  it caches. **Do not interpolate anything per-batch into that function.**
+- The manuscript is re-read at full price on every call. That is the real,
+  unavoidable cost of full-manuscript continuity, and it grows quadratically with
+  batch count: ~315,000 redundant input tokens across a 14-batch book.
+
+The single biggest lever on that cost is **fewer, larger writer calls**. Writing a
+chapter per call instead of a batch cuts redundant manuscript re-reads by roughly
+70%, because the manuscript is re-sent once per call regardless of call size.
+
+Watch `cached_input_tokens` via `npm run quality:score`. Expect it to equal the
+instructions block and no more; if it drops below that, something per-batch has
+leaked into `instructions`.
+
+### Length discipline
+
+Measured across every finished book, batches ran ~3,880 words against a 2,800
+target — a 32-38% overrun. Batch count is fixed at project creation, so nothing
+absorbed the excess: a book ordered at 120,000 words arrived at ~162,000 and
+cost a third more than the preset implied.
+
+Two mechanisms now hold the line, both in the prompt and neither costing a call:
+
+- **A hard range, not a soft target.** Each batch is given a target, an
+  acceptable range, and an explicit ceiling.
+- **Cumulative drift correction.** The per-batch target is recomputed from what
+  is actually left to write (`remaining words / remaining batches`), so an
+  overlong chapter is repaid by the ones after it instead of compounding. The
+  correction is clamped to 0.75x-1.1x of the blueprint figure, because an
+  unclamped correction would demand a 900-word batch and wreck the chapter.
+
+There is deliberately **no retry-on-overlong** — a rewrite costs a full write
+call. Run `npm run quality:score` after the next generation and read the
+per-batch length check; add machinery only if the prompt change was not enough.
+
 ### Writer context
 
 The writer receives the **entire manuscript written so far**, in full, not a

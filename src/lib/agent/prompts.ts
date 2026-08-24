@@ -303,8 +303,26 @@ export function summarizeBibleForSegmentPrompt(bible: StoryBible): string {
 // WRITER PROMPTS — produce ONE batch using blueprint + rolling summaries
 // ════════════════════════════════════════════════════════════════
 
-export function buildWriterSystemPrompt(): string {
-  return `You are Folio, a master literary novelist executing a planned manuscript one batch at a time.
+export interface WriterCanonParams {
+  bible: StoryBible;
+  idea: string;
+}
+
+/**
+ * Everything byte-identical across every writer call for a project: the craft
+ * rules, the blueprint canon, and the original idea.
+ *
+ * This lives in `instructions` rather than `input` for a measured reason. On the
+ * Responses API only the `instructions` field participates in prompt caching,
+ * and only when it matches byte for byte — `input` never caches, and a growing
+ * `instructions` caches nothing either (verified: a manuscript appended across
+ * four calls returned cached=0 every time). So the only content that can ever be
+ * cached is content that never changes, and it has to sit here to get that.
+ *
+ * Do not interpolate anything per-batch into this function.
+ */
+export function buildWriterSystemPrompt(canon?: WriterCanonParams): string {
+  const rules = `You are Folio, a master literary novelist executing a planned manuscript one batch at a time.
 
 You will be given:
 1. The complete Book Blueprint (canon — never contradict it)
@@ -328,8 +346,9 @@ Your job: write THE PROSE for the assigned batch, honoring every element of the 
 - Hit every scene beat listed in the blueprint, in roughly the listed order. You may add connective tissue but may not drop or swap beats.
 - Respect continuityFlags verbatim — these are non-negotiable facts the reader already knows.
 - Characters speak in the voice defined for them in the blueprint.
-- LENGTH IS A HARD CONSTRAINT, not a suggestion. Each batch states a word range with a ceiling. Land inside it. Never exceed the ceiling. Running long is the single most common failure in this pipeline: it inflates the book past the length the reader ordered and costs them money.
-- If the beats will not fit the range, compress description and transitional material. Never drop a beat, and never rush an ending to hit a number.
+- LENGTH IS A HARD CONSTRAINT, not a suggestion. Each batch states a word range with a floor and a ceiling. Land INSIDE the range. Both bounds are equally binding: finishing below the floor is exactly as much of a miss as running past the ceiling, and a short batch shortchanges the reader who ordered a book of a given length.
+- Aim for the stated target, not the edges. The range is tolerance for natural variation, not licence to habitually land at one end of it.
+- If the beats will not fit the range, compress description and transitional material. If they leave you short, develop the beats you have more fully rather than inventing new ones. Never drop a beat, and never rush an ending to hit a number.
 - Keep stateDelta brief: a few newFacts, characterUpdates, threadsOpened, and threadsResolved at most.
 
 # CRAFT
@@ -394,6 +413,76 @@ If this is the final batch of the book, the story MUST END here — climax resol
   - threadsOpened: {id, description} using planned threadLedger ids when applicable (concise stable ids like "letter-secret")
   - threadsResolved: {id} exact ids only — never fuzzy substring matches
   Keep each list short.`;
+
+  if (!canon) return rules;
+
+  const { bible, idea } = canon;
+
+  const characterLines = bible.characters.length
+    ? bible.characters
+        .map(
+          (c) =>
+            `- ${c.name} (${c.role}). ${c.description}\n    Voice: ${c.voice}\n    Motivation: ${c.motivation}\n    Arc: ${c.arc}`
+        )
+        .join("\n")
+    : "(no characters in bible)";
+
+  const threadLedgerBlock =
+    bible.threadLedger && bible.threadLedger.length
+      ? bible.threadLedger
+          .map(
+            (t) =>
+              `- [${t.id}] ${t.description} (plant ~batch ${t.plantBatch}, resolve by ~${t.resolveByBatch})`
+          )
+          .join("\n")
+      : "(none planned)";
+
+  return `${rules}
+
+# BOOK BLUEPRINT (CANON — OBEY)
+
+## Title
+${bible.title}
+
+## Logline
+${bible.logline}
+
+## Synopsis
+${bible.synopsis}
+
+## Premise
+${bible.premise}
+
+## Setting
+- World: ${bible.setting.world}
+- Era: ${bible.setting.era}
+- Rules: ${bible.setting.rules}
+- Atmosphere: ${bible.setting.atmosphere}
+
+## Voice Guide
+${bible.voiceGuide}
+
+## Style Guide
+${bible.styleGuide}
+
+## Themes
+${bible.themes.map((t) => `- ${t}`).join("\n")}
+
+## Structural Beats
+- Act breakdown: ${bible.structure.actBreakdown}
+- Inciting: ${bible.structure.inciting}
+- Midpoint: ${bible.structure.midpoint}
+- Climax: ${bible.structure.climax}
+- Resolution: ${bible.structure.resolution}
+
+## Full Character Bible
+${characterLines}
+
+## Thread Ledger (planned ids — prefer these in stateDelta)
+${threadLedgerBlock}
+
+# USER'S ORIGINAL IDEA (for flavor reference only — canon is the blueprint)
+${idea}`;
 }
 
 interface WriterPromptParams {
@@ -436,7 +525,6 @@ function serializeStoryState(state: StoryState | undefined): string {
 
 export function buildWriterUserPrompt(params: WriterPromptParams): string {
   const {
-    input,
     bible,
     blueprint,
     manuscriptBatches,
@@ -449,29 +537,8 @@ export function buildWriterUserPrompt(params: WriterPromptParams): string {
     critiqueFixes,
   } = params;
 
-  const threadLedgerBlock =
-    bible.threadLedger && bible.threadLedger.length
-      ? bible.threadLedger
-          .map(
-            (t) =>
-              `- [${t.id}] ${t.description} (plant ~batch ${t.plantBatch}, resolve by ~${t.resolveByBatch})`
-          )
-          .join("\n")
-      : "(none planned)";
-
   const progressPct = Math.min(100, Math.round((totalWords / targetWords) * 100));
 
-  // Full character bible (stable across batches for prompt-cache prefix)
-  const allCharacterLines = bible.characters.length
-    ? bible.characters
-        .map(
-          (c) =>
-            `- ${c.name} (${c.role}). ${c.description}\n    Voice: ${c.voice}\n    Motivation: ${c.motivation}\n    Arc: ${c.arc}`
-        )
-        .join("\n")
-    : "(no characters in bible)";
-
-  // Per-batch relevance note (variable — placed after stable canon)
   const presentNames = blueprint.charactersPresent.join(", ") || "(none flagged)";
 
   // Only populated when the manuscript exceeded the token budget.
@@ -510,53 +577,9 @@ ${droppedSummaryBlock}
 `
     : "";
 
-  // STABLE prefix first (cache-friendly), then PER-BATCH content last.
-  return `# BOOK BLUEPRINT (CANON — OBEY)
-
-## Title
-${bible.title}
-
-## Logline
-${bible.logline}
-
-## Synopsis
-${bible.synopsis}
-
-## Premise
-${bible.premise}
-
-## Setting
-- World: ${bible.setting.world}
-- Era: ${bible.setting.era}
-- Rules: ${bible.setting.rules}
-- Atmosphere: ${bible.setting.atmosphere}
-
-## Voice Guide
-${bible.voiceGuide}
-
-## Style Guide
-${bible.styleGuide}
-
-## Themes
-${bible.themes.map((t) => `- ${t}`).join("\n")}
-
-## Structural Beats
-- Act breakdown: ${bible.structure.actBreakdown}
-- Inciting: ${bible.structure.inciting}
-- Midpoint: ${bible.structure.midpoint}
-- Climax: ${bible.structure.climax}
-- Resolution: ${bible.structure.resolution}
-
-## Full Character Bible
-${allCharacterLines}
-
-## Thread Ledger (planned ids — prefer these in stateDelta)
-${threadLedgerBlock}
-
-# USER'S ORIGINAL IDEA (for flavor reference only — canon is the blueprint)
-${input.idea}
-
-${earlierBlock}# THE MANUSCRIPT SO FAR
+  // The blueprint canon and the user's idea now live in `instructions`, which is
+  // the only field that caches. Everything here varies per call.
+  return `${earlierBlock}# THE MANUSCRIPT SO FAR
 
 Everything written up to this point, in full. Read it. It is the ground truth for
 what has already happened, who is alive, what they are carrying, what they know,
@@ -886,12 +909,28 @@ never happens is fixed in the batch that should have contained it.
 Rank most severe first. Mark severity "severe" only for defects a reader would notice
 and be pulled out of the story by.
 
+# DEFECTS THAT GET MISSED
+
+These recur and are easy to skim past. Check for each of them explicitly:
+- A scene narrated twice. The same beat, injuries, or briefing reported once, then
+  restarted a few pages later as if it had not happened.
+- A physical object introduced with weight and then abandoned. If a vehicle, body,
+  document, or piece of evidence drives the plot, the ending must account for where
+  it ended up.
+- Something established as recoverable, survivable, or reversible, then treated as
+  permanently gone without explanation.
+- A character behaving well below their established competence because the plot needs
+  them to. If someone who has been careful all book suddenly is not, that is a defect
+  unless the text earns it.
+- Instructions, rules, or plans restated in near-identical form several times.
+
 # RESTRAINT
 
-An empty issues list is a valid and common answer. Do not manufacture problems to fill
-the list, and do not report matters of taste. Every repair you request costs a full
-rewrite of a batch that currently reads fine, and a bad repair makes the book worse.
-If you are not confident, say pass.
+Do not report matters of taste, and do not manufacture problems to fill the list.
+Every repair you request rewrites a batch that currently reads fine, and a bad repair
+makes the book worse. But do not stop at the first one or two either: report every
+defect that meets the bar above, ranked by severity. An empty list is valid only when
+the book genuinely holds together.
 
 Report unresolvedThreads separately even when you request no repairs — those are worth
 telling the author about whether or not they are fixable here.

@@ -20,7 +20,6 @@ import { readContextTokenBudget, selectManuscriptWindow } from "./writer-context
 import { computeLengthGuidance } from "./length-guidance";
 import type { BatchBlueprint, StateDelta, StoryBible } from "./types";
 
-/** Room for ~2,800 words + metadata + reasoning on GPT-5.6. */
 /**
  * Ceiling covering reasoning tokens AND visible output. Sized with headroom for
  * reasoning: a budget that fits only the output truncates the JSON mid-string.
@@ -107,8 +106,11 @@ export class WriterAgent {
       .filter((b) => b.batchNumber < targetNumber)
       .sort((a, b) => a.batchNumber - b.batchNumber);
 
-    // The whole manuscript so far, as an append-only cache prefix. Truncation
-    // only engages past the token budget, which no current length preset hits.
+    // The whole manuscript so far. Note this does NOT cache: only `instructions`
+    // participates in prompt caching, and only when byte-identical, so the
+    // manuscript is re-read at full price every call. That is the measured price
+    // of full-manuscript continuity. Truncation only engages past the token
+    // budget, which no current length preset hits.
     const manuscript = selectManuscriptWindow(
       priorBatches,
       readContextTokenBudget()
@@ -152,7 +154,7 @@ export class WriterAgent {
       });
     }
 
-    const instructions = buildWriterSystemPrompt();
+    const instructions = buildWriterSystemPrompt({ bible, idea: project.input.idea });
     const input = buildWriterUserPrompt({
       input: project.input,
       bible,

@@ -32,6 +32,12 @@ export const MODEL_PRICES: Record<string, ModelPrice> = {
   "claude-opus-5": { input: 5.0, cachedInput: 0.5, output: 25.0, vendor: "anthropic" },
   "claude-sonnet-5": { input: 3.0, cachedInput: 0.3, output: 15.0, vendor: "anthropic" },
   "claude-haiku-4-5": { input: 1.0, cachedInput: 0.1, output: 5.0, vendor: "anthropic" },
+  /**
+   * Image model. Text-input and image-output rates; image *input* is $8/1M and
+   * is not modelled because Folio only sends text to it. Without this row the
+   * cover was excluded from every total, under-reporting each book by ~$0.20.
+   */
+  "gpt-image-2": { input: 5.0, cachedInput: 1.25, output: 30.0, vendor: "openai" },
 };
 
 export interface TokenCounts {

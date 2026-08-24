@@ -13,8 +13,13 @@ export const MAX_REVISION_ATTEMPTS = 2;
  * Ceiling on targeted repairs after the whole-book audit. Each one is a full
  * batch rewrite, so an uncapped list would let a pessimistic audit rewrite the
  * book. The audit is told to rank by severity; anything past this is logged.
+ *
+ * Measured on the first real run: the audit surfaced 2 issues where an
+ * independent judge found 8, so the cap was never the binding constraint —
+ * auditor restraint was. Raised to 8 anyway so that as the auditor prompt gets
+ * less timid, the cap does not silently become the limiter.
  */
-export const MAX_BOOK_REPAIRS = 5;
+export const MAX_BOOK_REPAIRS = 8;
 
 export function normalizePlanningRunId(value: unknown): string {
   return typeof value === "string" && value.trim()
