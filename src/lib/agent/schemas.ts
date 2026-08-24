@@ -235,6 +235,36 @@ export const BookAuditOutputSchema = z.object({
   notes: z.string().nullable(),
 });
 
+/**
+ * Chapter-sized write. The model returns each batch separately rather than one
+ * blob so revision and book repair stay batch-scoped: rewriting a whole chapter
+ * to fix one scene would cost three times as much and risk three times as much
+ * working prose.
+ */
+export const ChapterOutputSchema = z.object({
+  batches: z
+    .array(
+      z.object({
+        batchNumber: z
+          .number()
+          .describe("Absolute 1-based batch number this section corresponds to."),
+        prose: z.string(),
+        summary: z.string(),
+        openThreads: z.string(),
+        stateDelta: z.object({
+          newFacts: z.array(z.string()),
+          characterUpdates: z.array(
+            z.object({ name: z.string(), status: z.string() })
+          ),
+          threadsOpened: z.array(ThreadOpenedSchema),
+          threadsResolved: z.array(ThreadResolvedSchema),
+        }),
+      })
+    )
+    .describe("One entry per batch in the chapter, in ascending batch order."),
+});
+
+export type ChapterOutputParsed = z.infer<typeof ChapterOutputSchema>;
 export type BookAuditOutputParsed = z.infer<typeof BookAuditOutputSchema>;
 export type BatchOutputParsed = z.infer<typeof BatchOutputSchema>;
 export type CritiqueOutputParsed = z.infer<typeof CritiqueOutputSchema>;

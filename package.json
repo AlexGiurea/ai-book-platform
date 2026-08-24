@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/lib/agent/pipeline-v3.test.ts src/lib/agent/writer-context.test.ts src/lib/agent/length-guidance.test.ts src/lib/agent/book-audit.test.ts src/lib/agent/response-guard.test.ts src/lib/quality/quality-harness.test.ts",
+    "test": "tsx --test src/lib/agent/pipeline-v3.test.ts src/lib/agent/writer-context.test.ts src/lib/agent/length-guidance.test.ts src/lib/agent/book-audit.test.ts src/lib/agent/response-guard.test.ts src/lib/agent/write-granularity.test.ts src/lib/quality/quality-harness.test.ts",
     "db:migrate": "node scripts/migrate.mjs",
     "notion:sync-books": "node scripts/sync-notion-books.mjs",
     "test:cover-image": "node scripts/test-cover-generation.mjs",

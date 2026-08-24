@@ -16,6 +16,10 @@ import { BLUEPRINT_SEGMENT_BATCH_COUNT, MONOLITHIC_PLAN_BATCH_CAP, plannerAgent 
 import { planAuditorAgent } from "./plan-auditor-agent";
 import { planRepairAgent } from "./plan-repair-agent";
 import { getNextBatchAfterQualityGate } from "./quality-continuation";
+import {
+  chapterBlueprints,
+  readWriteGranularity,
+} from "./write-granularity";
 import { reviseAgent } from "./revise-agent";
 import { revisionVerifierAgent } from "./revision-verifier-agent";
 import type {
@@ -534,6 +538,42 @@ export class BookComposer {
     return this.writeAbsoluteBatch(projectId, batchNumber, model);
   }
 
+  /**
+   * Hand-off after a chapter-sized write. Enqueues the critic when the chapter is
+   * complete, or falls back to a per-batch write if the call omitted a section.
+   */
+  private async afterChapterWritten(
+    projectId: string,
+    chapterNumber: number,
+    model: string
+  ): Promise<"queued" | "complete"> {
+    const updated = await store.getProject(projectId);
+    if (!updated?.bible) return this.completeProject(projectId, model);
+
+    const blueprints = chapterBlueprints(updated.bible, chapterNumber);
+    if (!blueprints.length) return this.completeProject(projectId, model);
+
+    const written = new Set(updated.batches.map((b) => b.batchNumber));
+    const missing = blueprints.find((b) => !written.has(b.number));
+    if (missing) {
+      await store.enqueueJob(projectId, "write", {
+        force: true,
+        dedupeKey: JobKeys.write(missing.number),
+        payload: { batchNumber: missing.number } satisfies WriteJobPayload,
+      });
+      return "queued";
+    }
+
+    const lastBatch = blueprints.at(-1)!.number;
+    const isFinalChapter = lastBatch >= updated.bible.batches.length;
+    await store.enqueueJob(projectId, "critique_chapter", {
+      force: true,
+      dedupeKey: JobKeys.critique(chapterNumber),
+      payload: { chapterNumber, isFinalChapter } satisfies CritiqueChapterPayload,
+    });
+    return "queued";
+  }
+
   private async writeAbsoluteBatch(
     projectId: string,
     batchNumber: number,
@@ -547,6 +587,31 @@ export class BookComposer {
       project.bible.batches[batchNumber - 1];
     if (!blueprint) {
       return this.completeProject(projectId, model);
+    }
+
+    // Chapter granularity: write the whole chapter in one call. The manuscript is
+    // re-sent in full per call and cannot be cached, so redundant input scales
+    // with call count — three batches in one call re-read it once, not three times.
+    if (readWriteGranularity() === "chapter") {
+      const result = await writerAgent.writeChapter(
+        projectId,
+        blueprint.chapterNumber
+      );
+      if (!result.needsBatchFallback) {
+        const after = await store.getProject(projectId);
+        const wroteThisBatch = after?.batches.some(
+          (b) => b.batchNumber === batchNumber
+        );
+        if (wroteThisBatch) {
+          return this.afterChapterWritten(
+            projectId,
+            blueprint.chapterNumber,
+            model
+          );
+        }
+      }
+      // Half-written chapter, or the call omitted this batch: fall through to the
+      // per-batch path, which is idempotent and will fill the gap.
     }
 
     // Idempotent replay: batch already present → skip model, continue orchestration.

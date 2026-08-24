@@ -619,6 +619,144 @@ ${critiqueFixes ? `\n# MANDATORY CRITIQUE FIXES\n${critiqueFixes}\n` : ""}
 Write batch ${blueprint.number} now. Hit every blueprint beat. Obey blueprint canon. Return structured output: prose, summary, openThreads, stateDelta.`;
 }
 
+export interface ChapterWriterPromptParams {
+  bible: StoryBible;
+  chapterNumber: number;
+  chapterTitle: string;
+  /** Every blueprint in this chapter, ascending. */
+  blueprints: BatchBlueprint[];
+  manuscriptBatches: Batch[];
+  summarizedBatches: Batch[];
+  storyState?: StoryState;
+  isFinalChapter: boolean;
+  totalWords: number;
+  targetWords: number;
+  /** Word budget for the chapter as a whole, plus per-section targets. */
+  chapterTargetWords: number;
+  chapterMinWords: number;
+  chapterMaxWords: number;
+  lengthCorrection?: string;
+}
+
+/**
+ * Chapter-sized write: one call produces every section of a chapter.
+ *
+ * The model still returns the sections separately, keyed by absolute batch
+ * number, so revision and repair stay batch-scoped downstream. What changes is
+ * that it can see the whole chapter's shape while writing any part of it,
+ * instead of writing thirds blind to each other.
+ */
+export function buildChapterWriterUserPrompt(
+  params: ChapterWriterPromptParams
+): string {
+  const {
+    bible,
+    chapterNumber,
+    chapterTitle,
+    blueprints,
+    manuscriptBatches,
+    summarizedBatches,
+    storyState,
+    isFinalChapter,
+    totalWords,
+    targetWords,
+    chapterTargetWords,
+    chapterMinWords,
+    chapterMaxWords,
+    lengthCorrection,
+  } = params;
+
+  const droppedSummaryBlock = summarizedBatches.length
+    ? summarizedBatches
+        .map(
+          (b) =>
+            `- §${b.batchNumber}${b.chapterTitle ? ` (Ch.${b.chapterNumber} "${b.chapterTitle}")` : ""}: ${b.chapterSummary ?? "—"}`
+        )
+        .join("\n")
+    : "";
+
+  let manuscriptChapter: number | undefined;
+  const manuscriptBlock = manuscriptBatches.length
+    ? manuscriptBatches
+        .map((b) => {
+          const parts: string[] = [];
+          if (b.chapterNumber != null && b.chapterNumber !== manuscriptChapter) {
+            manuscriptChapter = b.chapterNumber;
+            parts.push(
+              `## Chapter ${b.chapterNumber}${b.chapterTitle ? ` — "${b.chapterTitle}"` : ""}`
+            );
+          }
+          parts.push(`### §${b.batchNumber}`);
+          parts.push(b.prose);
+          return parts.join("\n\n");
+        })
+        .join("\n\n")
+    : "(this is the opening chapter of the book — nothing has been written yet)";
+
+  const earlierBlock = droppedSummaryBlock
+    ? `# EARLIER CHAPTERS (summary only — beyond the context budget)\n${droppedSummaryBlock}\n\n`
+    : "";
+
+  const sectionBlock = blueprints
+    .map(
+      (b) =>
+        `### Section §${b.number} (${b.positionInChapter}) — target ${b.targetWords.toLocaleString()} words
+- Setting: ${b.settingLocation}
+- Tone: ${b.toneNote}
+- Purpose: ${b.purpose}
+- Characters present: ${b.charactersPresent.join(", ") || "(none flagged)"}
+- Scene beats, in order:
+${b.scenes.map((sc, i) => `  ${i + 1}. ${sc}`).join("\n")}
+- Continuity flags (MUST respect):
+${b.continuityFlags.length ? b.continuityFlags.map((f) => `  - ${f}`).join("\n") : "  - (none)"}`
+    )
+    .join("\n\n");
+
+  const progressPct = Math.min(100, Math.round((totalWords / targetWords) * 100));
+
+  return `${earlierBlock}# THE MANUSCRIPT SO FAR
+
+Everything written up to this point, in full. Read it. It is the ground truth for
+what has already happened, who is alive, what they are carrying, what they know,
+and how the narration sounds. Where this text and the blueprint disagree about a
+detail already on the page, the text wins and you carry the contradiction forward
+consistently rather than correcting it mid-scene.
+
+Do not recap it, do not repeat its phrasing, and do not reuse its images. Continue
+from it.
+
+${manuscriptBlock}
+
+# CHAPTER ${chapterNumber} — "${chapterTitle}"
+
+You are writing this ENTIRE chapter in one pass, as ${blueprints.length} sections.
+Shape it as a chapter: the sections are divisions of one continuous movement, not
+three separate assignments. Momentum, escalation, and the closing beat belong to
+the chapter, not to any one section.
+
+${sectionBlock}
+
+# WORD BUDGET
+
+- Whole chapter: target ${chapterTargetWords.toLocaleString()}, acceptable range ${chapterMinWords.toLocaleString()}-${chapterMaxWords.toLocaleString()}. Land INSIDE the range.
+- Each section carries its own target above. Keep them roughly proportional; do not
+  spend the chapter's budget on the first section and starve the last.
+
+# STORY STATE (continuity ledger — an index into the manuscript above, not a replacement for it)
+${serializeStoryState(storyState)}
+
+# CURRENT STATE
+- Words written so far: ${totalWords.toLocaleString()} / ${targetWords.toLocaleString()} (${progressPct}%)
+${lengthCorrection ? `- LENGTH CORRECTION: ${lengthCorrection}` : "- Length is on plan. Stay inside the range for this chapter."}
+- Chapter ${chapterNumber} of ${bible.chapters.length}
+${isFinalChapter ? "- THIS IS THE FINAL CHAPTER. The story MUST END. Land the climax and place the closing image." : ""}
+# YOUR TASK
+Write chapter ${chapterNumber} now, as ${blueprints.length} sections. Return one entry per
+section in the batches array, in ascending batch order, each with its own
+batchNumber, prose, summary, openThreads, and stateDelta. Use the exact batch
+numbers given above: ${blueprints.map((b) => b.number).join(", ")}.`;
+}
+
 // ════════════════════════════════════════════════════════════════
 // CRITIC / REVISE / VERIFY PROMPTS — chapter-close quality gate
 // ════════════════════════════════════════════════════════════════

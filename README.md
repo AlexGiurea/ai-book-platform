@@ -95,6 +95,7 @@ npm run test:cover-image
 | `OPENAI_REVISION_VERIFIER_MODEL` | No | Post-revise verifier. Default `gpt-5.6-luna`. |
 | `OPENAI_FREE_MODEL` / `OPENAI_PRO_MODEL` / `OPENAI_MODEL` | No | Legacy writer fallbacks (blank-safe). Prefer role-specific vars. |
 | `OPENAI_IMAGE_MODEL` | No | Cover image model. Default `gpt-image-2`. |
+| `FOLIO_WRITE_GRANULARITY` | No | `batch` (default) or `chapter`. Chapter mode writes a whole chapter per model call, cutting redundant manuscript re-reads by ~70%. Unproven on quality — run both and compare with `npm run quality:score`. |
 | `FOLIO_WRITER_CONTEXT_TOKEN_BUDGET` | No | Ceiling on prose tokens fed to the writer. Default `400000` — above every length preset, so it is a guard rail, not part of the normal path. |
 | `FOLIO_OWNER_EMAILS` | No | Comma-separated email allowlist that receives Pro without Stripe. Use this for owner and beta accounts before billing launches. |
 | `DATABASE_URL` | Yes for persistence | Neon Postgres connection string used for durable projects, batches, events, and jobs. |
@@ -156,6 +157,32 @@ rewrites a batch that currently reads fine. Repairs run one at a time, capped at
 exists at that point, so both stages classify as `finish_book` — the book ships
 as written. Only stages that run before any prose exists (`plan`, `write`) can
 hard-fail.
+
+### Write granularity
+
+`FOLIO_WRITE_GRANULARITY=chapter` makes the writer produce an entire chapter per
+model call instead of a ~2,800-word batch.
+
+The reason is the caching finding above. The manuscript is re-sent in full on
+every writer call and can never be cached, so **redundant input scales with the
+number of calls, not their size**. A 14-batch book re-reads ~315,000 tokens it
+has already paid for; the same book as 5 chapter-sized calls re-reads ~97,000.
+
+The model returns each section separately, keyed by absolute batch number, so
+critique, revision and book repair stay batch-scoped — a one-scene fix must not
+cost a whole-chapter rewrite.
+
+Two safety properties, both tested:
+
+- A **half-written chapter falls back to per-batch.** Resumed runs and partial
+  failures must not clobber existing rows.
+- If the call **omits a section**, the missing batch is queued as a normal write
+  rather than failing the project.
+
+**This is unproven on quality.** The craft argument — a chapter written as one
+unit can shape its own arc instead of being assembled from three blind thirds —
+is plausible and untested. Run a book each way at the same preset and compare
+the judge scores before making it the default.
 
 ### Length discipline
 
