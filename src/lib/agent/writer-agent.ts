@@ -16,6 +16,7 @@ import {
   rebuildStoryStateBeforeBatch,
 } from "./story-state";
 import { readContextTokenBudget, selectManuscriptWindow } from "./writer-context";
+import { computeLengthGuidance } from "./length-guidance";
 import type { BatchBlueprint, StateDelta, StoryBible } from "./types";
 
 /** Room for ~2,800 words + metadata + reasoning on GPT-5.6. */
@@ -126,6 +127,16 @@ export class WriterAgent {
 
     const isFinalBatch = blueprint.number >= bible.totalBatches;
 
+    // Words already banked, excluding the batch being written or replaced.
+    const wordsSoFar = priorBatches.reduce((sum, b) => sum + b.wordCount, 0);
+    const length = computeLengthGuidance({
+      blueprintTargetWords: blueprint.targetWords,
+      batchNumber: targetNumber,
+      totalBatches: bible.totalBatches,
+      wordsSoFar,
+      bookTargetWords: project.targetWords,
+    });
+
     if (options.replaceBatchNumber == null) {
       await store.appendEvent(projectId, {
         type: "batch_start",
@@ -146,6 +157,7 @@ export class WriterAgent {
       isFinalBatch,
       totalWords: project.totalWords,
       targetWords: project.targetWords,
+      length,
       critiqueFixes: options.critiqueFixes,
     });
 

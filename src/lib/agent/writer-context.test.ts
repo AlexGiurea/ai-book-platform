@@ -13,6 +13,7 @@ import {
   selectManuscriptWindow,
 } from "./writer-context";
 import { buildWriterUserPrompt } from "./prompts";
+import { computeLengthGuidance } from "./length-guidance";
 import type { Batch, BatchBlueprint, ProjectInput, StoryBible } from "./types";
 
 function batch(n: number, words = 2800): Batch {
@@ -209,6 +210,13 @@ describe("writer prompt ordering", () => {
       isFinalBatch: false,
       totalWords: 8400,
       targetWords: 28000,
+      length: computeLengthGuidance({
+        blueprintTargetWords: 2800,
+        batchNumber: 4,
+        totalBatches: 10,
+        wordsSoFar: 8400,
+        bookTargetWords: 28000,
+      }),
     });
 
     const manuscriptAt = prompt.indexOf("# THE MANUSCRIPT SO FAR");
@@ -233,6 +241,13 @@ describe("writer prompt ordering", () => {
       isFinalBatch: false,
       totalWords: 8400,
       targetWords: 28000,
+      length: computeLengthGuidance({
+        blueprintTargetWords: 2800,
+        batchNumber: 4,
+        totalBatches: 10,
+        wordsSoFar: 8400,
+        bookTargetWords: 28000,
+      }),
     });
     for (const n of [1, 2, 3]) {
       assert.ok(prompt.includes(`PROSE-${n}`), `batch ${n} prose missing`);
@@ -250,6 +265,13 @@ describe("writer prompt ordering", () => {
       isFinalBatch: false,
       totalWords: 8400,
       targetWords: 28000,
+      length: computeLengthGuidance({
+        blueprintTargetWords: 2800,
+        batchNumber: 4,
+        totalBatches: 10,
+        wordsSoFar: 8400,
+        bookTargetWords: 28000,
+      }),
     });
     assert.ok(!prompt.includes("EARLIER CHAPTERS"));
   });

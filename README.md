@@ -129,6 +129,27 @@ Generation uses **pipeline version `v3`**. Role models and the pipeline version 
 
 `plan` → (`plan_batches`…)? → `plan_audit` → (`plan_repair` → `plan_audit:2`)? → `awaiting_approval` → `write:N` → (chapter close) `critique` → (`revise` → `verify_revision`)? → next `write` / `complete`. Cover runs in parallel after approval.
 
+### Length discipline
+
+Measured across every finished book, batches ran ~3,880 words against a 2,800
+target — a 32-38% overrun. Batch count is fixed at project creation, so nothing
+absorbed the excess: a book ordered at 120,000 words arrived at ~162,000 and
+cost a third more than the preset implied.
+
+Two mechanisms now hold the line, both in the prompt and neither costing a call:
+
+- **A hard range, not a soft target.** Each batch is given a target, an
+  acceptable range, and an explicit ceiling.
+- **Cumulative drift correction.** The per-batch target is recomputed from what
+  is actually left to write (`remaining words / remaining batches`), so an
+  overlong chapter is repaid by the ones after it instead of compounding. The
+  correction is clamped to 0.75x-1.1x of the blueprint figure, because an
+  unclamped correction would demand a 900-word batch and wreck the chapter.
+
+There is deliberately **no retry-on-overlong** — a rewrite costs a full write
+call. Run `npm run quality:score` after the next generation and read the
+per-batch length check; add machinery only if the prompt change was not enough.
+
 ### Writer context
 
 The writer receives the **entire manuscript written so far**, in full, not a

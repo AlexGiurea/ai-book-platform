@@ -7,6 +7,7 @@ import type {
   PlanAuditIssue,
 } from "./types";
 import { TARGET_BATCHES_PER_CHAPTER, WORDS_PER_BATCH } from "./context-store";
+import type { LengthGuidance } from "./length-guidance";
 
 // ════════════════════════════════════════════════════════════════
 // PLANNER PROMPTS — turn user idea into a comprehensive Book Blueprint
@@ -327,7 +328,8 @@ Your job: write THE PROSE for the assigned batch, honoring every element of the 
 - Hit every scene beat listed in the blueprint, in roughly the listed order. You may add connective tissue but may not drop or swap beats.
 - Respect continuityFlags verbatim — these are non-negotiable facts the reader already knows.
 - Characters speak in the voice defined for them in the blueprint.
-- Target length: approximately the blueprint's targetWords. Do not pad; do not rush.
+- LENGTH IS A HARD CONSTRAINT, not a suggestion. Each batch states a word range with a ceiling. Land inside it. Never exceed the ceiling. Running long is the single most common failure in this pipeline: it inflates the book past the length the reader ordered and costs them money.
+- If the beats will not fit the range, compress description and transitional material. Never drop a beat, and never rush an ending to hit a number.
 - Keep stateDelta brief: a few newFacts, characterUpdates, threadsOpened, and threadsResolved at most.
 
 # CRAFT
@@ -406,6 +408,8 @@ interface WriterPromptParams {
   isFinalBatch: boolean;
   totalWords: number;
   targetWords: number;
+  /** Adaptive word budget for this batch, correcting cumulative drift. */
+  length: LengthGuidance;
   /** Optional critique issues injected for revise passes */
   critiqueFixes?: string;
 }
@@ -441,6 +445,7 @@ export function buildWriterUserPrompt(params: WriterPromptParams): string {
     isFinalBatch,
     totalWords,
     targetWords,
+    length,
     critiqueFixes,
   } = params;
 
@@ -576,13 +581,14 @@ ${manuscriptBlock}
 ${blueprint.scenes.map((s, i) => `  ${i + 1}. ${s}`).join("\n")}
 - Continuity flags (MUST respect):
 ${blueprint.continuityFlags.length ? blueprint.continuityFlags.map((f) => `  - ${f}`).join("\n") : "  - (none)"}
-- Target words: ~${blueprint.targetWords.toLocaleString()}
+- WORD BUDGET: target ${length.targetWords.toLocaleString()}, acceptable range ${length.minWords.toLocaleString()}-${length.maxWords.toLocaleString()}. HARD CEILING ${length.maxWords.toLocaleString()} words. Count as you go.
 
 # STORY STATE (continuity ledger — an index into the manuscript above, not a replacement for it)
 ${serializeStoryState(storyState)}
 
 # CURRENT STATE
 - Words written so far: ${totalWords.toLocaleString()} / ${targetWords.toLocaleString()} (${progressPct}%)
+${length.correction ? `- LENGTH CORRECTION: ${length.correction}` : "- Length is on plan. Stay inside the range for this batch."}
 - You are writing BATCH ${blueprint.number} of ${bible.totalBatches}
 ${isFinalBatch ? "- THIS IS THE FINAL BATCH. The story MUST END. Land the climax and place the closing image." : ""}
 ${critiqueFixes ? `\n# MANDATORY CRITIQUE FIXES\n${critiqueFixes}\n` : ""}
