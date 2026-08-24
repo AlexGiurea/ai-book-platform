@@ -86,6 +86,7 @@ npm run test:cover-image
 | `JOB_RUNNER_SECRET` | Recommended for production | Long random bearer token required for unauthenticated cron or external scheduler calls to `/api/jobs/run`. Signed-in browser calls are scoped to the current user’s own queued jobs. |
 | `OPENAI_PLANNER_MODEL` | No | Planner (Sol). Default `gpt-5.6-sol`. |
 | `OPENAI_PLAN_AUDITOR_MODEL` | No | Plan auditor (Terra). Default `gpt-5.6-terra`. |
+| `OPENAI_BOOK_AUDITOR_MODEL` | No | Whole-book auditor. Default `gpt-5.6-sol` — this pass reads the finished manuscript and decides whether the book works, so it runs on the strongest model. |
 | `OPENAI_WRITER_MODEL_FREE` | No | Free writer. Default `gpt-5.6-luna`. |
 | `OPENAI_WRITER_MODEL_PRO` | No | Pro writer (Literary Sol). Default `gpt-5.6-sol`. Set to `gpt-5.6-terra` for optional Balanced Pro. |
 | `OPENAI_CRITIC_MODEL` | No | Chapter critic. Default `gpt-5.6-terra`. |
@@ -115,6 +116,7 @@ Generation uses **pipeline version `v3`**. Role models and the pipeline version 
 | --- | --- | --- |
 | planner | `gpt-5.6-sol` | `OPENAI_PLANNER_MODEL` |
 | plan_auditor | `gpt-5.6-terra` | `OPENAI_PLAN_AUDITOR_MODEL` |
+| book_auditor | `gpt-5.6-sol` | `OPENAI_BOOK_AUDITOR_MODEL` |
 | writer (Free) | `gpt-5.6-luna` | `OPENAI_WRITER_MODEL_FREE` → legacy `OPENAI_FREE_MODEL` |
 | writer (Pro Literary) | `gpt-5.6-sol` | `OPENAI_WRITER_MODEL_PRO` → legacy `OPENAI_PRO_MODEL` / `OPENAI_MODEL` |
 | critic | `gpt-5.6-terra` | `OPENAI_CRITIC_MODEL` |
@@ -127,7 +129,33 @@ Generation uses **pipeline version `v3`**. Role models and the pipeline version 
 
 ### Job flow
 
-`plan` → (`plan_batches`…)? → `plan_audit` → (`plan_repair` → `plan_audit:2`)? → `awaiting_approval` → `write:N` → (chapter close) `critique` → (`revise` → `verify_revision`)? → next `write` / `complete`. Cover runs in parallel after approval.
+`plan` → (`plan_batches`…)? → `plan_audit` → (`plan_repair` → `plan_audit:2`)? → `awaiting_approval` → `write:N` → (chapter close) `critique` → (`revise` → `verify_revision`)? → next `write` → (last chapter) `book_audit` → (`book_repair` ...)? → `complete`. Cover runs in parallel after approval.
+
+### Whole-book audit
+
+Every check before this one is chapter-local: the critic sees one chapter, the
+verifier one batch. Nothing asked whether the *book* worked, so a thread planted
+in act one and never paid off shipped without anything noticing.
+
+After the last chapter, `book_audit` runs two halves:
+
+- **Free.** The deterministic checks from the quality harness — thread
+  resolution against the ledger, planned characters who never reach the page.
+  Their findings are handed to the model half as established fact rather than
+  left for it to notice.
+- **Paid, once.** One pass over the full manuscript on `book_auditor`
+  (`gpt-5.6-sol`), about $0.23 — the manuscript is a cached prefix by then, so
+  the read is mostly discounted and only the verdict pays output rates.
+
+Issues must name a batch and be fixable by rewriting that single batch; the
+auditor is told to say pass rather than manufacture work, because every repair
+rewrites a batch that currently reads fine. Repairs run one at a time, capped at
+`MAX_BOOK_REPAIRS` (5), deduplicated per batch, severe before moderate.
+
+**A failed audit or repair never fails the project.** The manuscript already
+exists at that point, so both stages classify as `finish_book` — the book ships
+as written. Only stages that run before any prose exists (`plan`, `write`) can
+hard-fail.
 
 ### Length discipline
 

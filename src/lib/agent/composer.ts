@@ -1,3 +1,4 @@
+import { bookAuditorAgent } from "./book-auditor-agent";
 import { store, WORDS_PER_BATCH } from "./context-store";
 import { coverAgent } from "./cover-agent";
 import { criticAgent } from "./critic-agent";
@@ -5,6 +6,7 @@ import { isGenerationCancelled } from "./generation-errors";
 import {
   INITIAL_PLANNING_RUN_ID,
   JobKeys,
+  MAX_BOOK_REPAIRS,
   MAX_REVISION_ATTEMPTS,
   normalizePlanningRunId,
   revisionKeyFor,
@@ -17,6 +19,9 @@ import { getNextBatchAfterQualityGate } from "./quality-continuation";
 import { reviseAgent } from "./revise-agent";
 import { revisionVerifierAgent } from "./revision-verifier-agent";
 import type {
+  BookAuditPayload,
+  BookRepairIssue,
+  BookRepairPayload,
   CritiqueChapterPayload,
   PlanAuditPayload,
   PlanJobPayload,
@@ -303,7 +308,38 @@ export class BookComposer {
     }
   }
 
-  private async completeProject(projectId: string, model: string): Promise<"complete"> {
+  /**
+   * The manuscript is written. Hand it to the whole-book audit before declaring
+   * the project finished — this is the only stage that reads the book entire.
+   * Falls through to completion if there is nothing to audit.
+   */
+  private async completeProject(
+    projectId: string,
+    model: string
+  ): Promise<"queued" | "complete"> {
+    const project = await store.getProject(projectId);
+    if (!project?.bible || !project.batches.length) {
+      return this.finishProject(projectId, model);
+    }
+
+    const alreadyAudited = project.events.some((e) => e.type === "book_audit");
+    if (alreadyAudited) {
+      return this.finishProject(projectId, model);
+    }
+
+    await store.enqueueJob(projectId, "book_audit", {
+      force: true,
+      dedupeKey: JobKeys.bookAudit(1),
+      payload: { pass: 1 } satisfies BookAuditPayload,
+    });
+    return "queued";
+  }
+
+  /** Mark the project complete. Every path ends here exactly once. */
+  private async finishProject(
+    projectId: string,
+    model: string
+  ): Promise<"complete"> {
     await store.updateStatus(projectId, "complete");
     const finalProject = await store.getProject(projectId);
     await store.appendEvent(projectId, {
@@ -312,6 +348,129 @@ export class BookComposer {
       model,
     });
     return "complete";
+  }
+
+  /**
+   * Whole-book audit. Runs the free deterministic checks, then one model pass
+   * over the full manuscript, then queues targeted single-batch repairs.
+   */
+  async auditBook(projectId: string): Promise<"queued" | "complete"> {
+    const project = await store.getProject(projectId);
+    if (!project) throw new Error(`Project ${projectId} not found`);
+    const writerModel = getModelForProject(project, "writer");
+
+    await store.assertNotCancelled(projectId);
+
+    let repairs: BookRepairIssue[] = [];
+    try {
+      const result = await bookAuditorAgent.auditBook(projectId);
+      repairs = result.repairs;
+
+      await store.appendEvent(projectId, {
+        type: "book_audit",
+        verdict: result.audit.verdict === "repair" ? "repair" : "pass",
+        issueCount: result.audit.issues.length,
+        unresolvedThreads: result.unresolvedThreadCount,
+        repairsQueued: repairs.length,
+        durationMs: result.durationMs,
+        model: result.model,
+      });
+
+      if (result.audit.issues.length > repairs.length) {
+        console.info("[folio] book audit issues beyond the repair cap", {
+          projectId,
+          found: result.audit.issues.length,
+          queued: repairs.length,
+          cap: MAX_BOOK_REPAIRS,
+        });
+      }
+    } catch (err) {
+      if (isGenerationCancelled(err)) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[folio] book_audit failed (shipping as written): ${msg}`);
+      await store.appendEvent(projectId, {
+        type: "book_audit",
+        verdict: "warning",
+        error: msg,
+      });
+    }
+
+    if (!repairs.length) {
+      return this.finishProject(projectId, writerModel);
+    }
+
+    await store.enqueueJob(projectId, "book_repair", {
+      force: true,
+      dedupeKey: JobKeys.bookRepair(0),
+      payload: { repairs, index: 0 } satisfies BookRepairPayload,
+    });
+    return "queued";
+  }
+
+  /**
+   * Apply one targeted repair, then hand off to the next or finish. Repairs run
+   * one at a time so a failure costs one batch rather than the whole tail.
+   */
+  async repairBook(
+    projectId: string,
+    payload: BookRepairPayload
+  ): Promise<"queued" | "complete"> {
+    const project = await store.getProject(projectId);
+    if (!project?.bible) throw new Error(`Project ${projectId} missing bible`);
+    const writerModel = getModelForProject(project, "writer");
+
+    await store.assertNotCancelled(projectId);
+    await store.updateStatus(projectId, "writing");
+
+    const repairs = payload.repairs ?? [];
+    const index = payload.index ?? 0;
+    const repair = repairs[index];
+
+    if (repair) {
+      const blueprint = project.bible.batches.find(
+        (b) => b.number === repair.batchNumber
+      );
+      if (!blueprint) {
+        console.warn("[folio] book_repair: no blueprint for batch", {
+          projectId,
+          batchNumber: repair.batchNumber,
+        });
+      } else {
+        try {
+          await writerAgent.writeBatch(projectId, blueprint, {
+            replaceBatchNumber: repair.batchNumber,
+            revisionKey: `book-repair:${index}:${repair.batchNumber}`,
+            critiqueFixes: `${repair.severity.toUpperCase()} defect found by the whole-book audit. ${repair.description}`,
+          });
+          await store.appendEvent(projectId, {
+            type: "book_repaired",
+            batchNumber: repair.batchNumber,
+            model: writerModel,
+          });
+        } catch (err) {
+          if (isGenerationCancelled(err)) throw err;
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[folio] book_repair failed (continuing): ${msg}`);
+          await store.appendEvent(projectId, {
+            type: "book_repaired",
+            batchNumber: repair.batchNumber,
+            error: msg,
+          });
+        }
+      }
+    }
+
+    const nextIndex = index + 1;
+    if (nextIndex < repairs.length) {
+      await store.enqueueJob(projectId, "book_repair", {
+        force: true,
+        dedupeKey: JobKeys.bookRepair(nextIndex),
+        payload: { repairs, index: nextIndex } satisfies BookRepairPayload,
+      });
+      return "queued";
+    }
+
+    return this.finishProject(projectId, writerModel);
   }
 
   private async enqueueWriteOrComplete(

@@ -211,6 +211,8 @@ export type BatchEventType =
   | "chapter_critique"
   | "batch_revised"
   | "revision_verified"
+  | "book_audit"
+  | "book_repaired"
   | "project_complete"
   | "project_failed"
   | "project_cancelled";
@@ -239,6 +241,10 @@ export interface BatchEvent {
   issueCount?: number;
   /** Revision verifier */
   fixed?: boolean;
+  /** Whole-book audit: unresolved planted threads found by the free deterministic check. */
+  unresolvedThreads?: number;
+  /** Whole-book audit: how many targeted repairs were queued. */
+  repairsQueued?: number;
 }
 
 export type ProjectStatus =
@@ -298,7 +304,9 @@ export type GenerationJobType =
   | "cover"
   | "critique_chapter"
   | "revise_batch"
-  | "verify_revision";
+  | "verify_revision"
+  | "book_audit"
+  | "book_repair";
 export type GenerationJobStatus = "queued" | "running" | "complete" | "failed";
 
 export interface WriteJobPayload {
@@ -342,6 +350,26 @@ export interface VerifyRevisionPayload {
   revisionAttempt?: number;
 }
 
+export type BookIssueSeverity = "moderate" | "severe";
+
+export interface BookRepairIssue {
+  /** Absolute 1-based batch carrying the defect. */
+  batchNumber: number;
+  description: string;
+  severity: BookIssueSeverity;
+}
+
+export interface BookAuditPayload {
+  /** Reserved for a future second audit pass. */
+  pass?: number;
+}
+
+export interface BookRepairPayload {
+  repairs: BookRepairIssue[];
+  /** 0-based position in `repairs` that this job performs. */
+  index: number;
+}
+
 export interface PlanJobPayload {
   /** Namespace shared by every planning stage for one initial/replan run. */
   planningRunId?: string;
@@ -382,6 +410,8 @@ export type GenerationJobPayload =
   | CritiqueChapterPayload
   | ReviseBatchPayload
   | VerifyRevisionPayload
+  | BookAuditPayload
+  | BookRepairPayload
   | PlanAuditPayload
   | PlanRepairPayload
   | Record<string, unknown>;

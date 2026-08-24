@@ -6,6 +6,7 @@ import { classifyExhaustedJob } from "./job-recovery";
 import { getNextBatchAfterQualityGate } from "./quality-continuation";
 import { store } from "./context-store";
 import type {
+  BookRepairPayload,
   CritiqueChapterPayload,
   PlanAuditPayload,
   PlanJobPayload,
@@ -99,6 +100,11 @@ export async function processNextGenerationJob(userId?: string): Promise<{
         throw new Error("verify_revision job missing batchNumber payload");
       }
       await bookComposer.verifyRevision(job.projectId, payload);
+    } else if (job.type === "book_audit") {
+      await bookComposer.auditBook(job.projectId);
+    } else if (job.type === "book_repair") {
+      const payload = (job.payload ?? {}) as BookRepairPayload;
+      await bookComposer.repairBook(job.projectId, payload);
     } else if (job.type === "cover") {
       await coverAgent.generateCover(job.projectId);
     } else {
@@ -153,6 +159,8 @@ export async function processNextGenerationJob(userId?: string): Promise<{
 
     const softFail =
       job.type === "cover" ||
+      job.type === "book_audit" ||
+      job.type === "book_repair" ||
       job.type === "critique_chapter" ||
       job.type === "revise_batch" ||
       job.type === "verify_revision" ||
@@ -178,6 +186,9 @@ export async function processNextGenerationJob(userId?: string): Promise<{
             recoverErr instanceof Error ? recoverErr.message : String(recoverErr)
           );
         }
+      } else if (job.type === "book_audit" || job.type === "book_repair") {
+        // Manuscript already exists; never strand a written book on an audit.
+        await finishBookAfterFailure(job.projectId);
       } else if (job.type === "plan_audit" || job.type === "plan_repair") {
         try {
           await store.updateStatus(job.projectId, "awaiting_approval");
@@ -232,6 +243,11 @@ async function recoverExhaustedJob(
       return;
     }
 
+    if (recovery === "finish_book") {
+      await finishBookAfterFailure(job.projectId);
+      return;
+    }
+
     if (recovery === "cover_fail") {
       await store.updateCoverStatus(job.projectId, "failed", message);
       await store.appendEvent(job.projectId, {
@@ -253,6 +269,18 @@ async function recoverExhaustedJob(
       err instanceof Error ? err.message : String(err)
     );
   }
+}
+
+/** Ship a written manuscript when a post-write stage gives out. */
+async function finishBookAfterFailure(projectId: string): Promise<void> {
+  const project = await store.getProject(projectId);
+  if (!project) return;
+  if (project.status === "complete") return;
+  await store.updateStatus(projectId, "complete");
+  await store.appendEvent(projectId, {
+    type: "project_complete",
+    totalWords: project.totalWords,
+  });
 }
 
 async function continueAfterQualityGate(

@@ -5,6 +5,7 @@ export { plannerAgent, PlannerAgent } from "./planner-agent";
 export { criticAgent, CriticAgent } from "./critic-agent";
 export { reviseAgent, ReviseAgent } from "./revise-agent";
 export { planAuditorAgent, PlanAuditorAgent } from "./plan-auditor-agent";
+export { bookAuditorAgent, BookAuditorAgent } from "./book-auditor-agent";
 export { planRepairAgent, PlanRepairAgent } from "./plan-repair-agent";
 export {
   revisionVerifierAgent,
@@ -26,4 +27,4 @@ export {
   readEnvModel,
   DEFAULT_ROLE_MODELS,
 } from "./model-config";
-export { JobKeys, revisionKeyFor } from "./job-keys";
+export { JobKeys, MAX_BOOK_REPAIRS, revisionKeyFor } from "./job-keys";

@@ -248,6 +248,8 @@ function ObservabilityPanel({
       e.type === "chapter_critique" ||
       e.type === "batch_revised" ||
       e.type === "revision_verified" ||
+      e.type === "book_audit" ||
+      e.type === "book_repaired" ||
       e.type === "project_complete" ||
       e.type === "project_failed"
   );
@@ -490,6 +492,39 @@ function ObservabilityPanel({
                         : ev.wordsInBatch != null
                           ? `${ev.wordsInBatch.toLocaleString()} words`
                           : "continuity fix"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>
+                </motion.div>
+              );
+            }
+            if (ev.type === "book_audit") {
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2.5">
+                  <CheckCircle2 size={12} className="text-emerald-300 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-parchment-300">Whole-book review</span>
+                    <span className="text-xs text-parchment-500/60 ml-1.5">
+                      {ev.error
+                        ? ev.error
+                        : ev.verdict === "repair"
+                          ? `${ev.repairsQueued ?? 0} repairs queued`
+                          : "no changes needed"}
+                      {ev.unresolvedThreads ? ` · ${ev.unresolvedThreads} unresolved threads` : ""}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>
+                </motion.div>
+              );
+            }
+            if (ev.type === "book_repaired") {
+              return (
+                <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2.5">
+                  <CheckCircle2 size={12} className="text-amber-300 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-parchment-300">Section {ev.batchNumber} repaired</span>
+                    <span className="text-xs text-parchment-500/60 ml-1.5">
+                      {ev.error ? ev.error : "book-level fix"}
                     </span>
                   </div>
                   <span className="text-[10px] text-parchment-500/40 flex-shrink-0 font-mono">{fmtTime(ev.timestamp)}</span>

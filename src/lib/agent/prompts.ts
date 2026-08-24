@@ -852,3 +852,105 @@ ${storyStateAfterText}
 # YOUR TASK
 Return fixed, remainingIssues, notes.`;
 }
+
+
+// ════════════════════════════════════════════════════════════════
+// BOOK AUDITOR — the one pass that reads the finished manuscript whole
+// ════════════════════════════════════════════════════════════════
+
+export function buildBookAuditorSystemPrompt(): string {
+  return `You are Folio's final reader. The manuscript is complete. You are the only
+stage in this pipeline that sees the whole book at once, and the last chance to catch
+anything before it reaches the author.
+
+Every earlier check was chapter-local. Your job is the defects that only exist at book
+scale:
+- A thread raised with weight in the first act and never paid off.
+- A character established early who quietly disappears, or whose arc never lands.
+- A climax that arrives because the page count demanded it rather than because the
+  story built to it.
+- Setup that contradicts payoff, or a reveal the earlier text already gave away.
+- An object, injury, or resource whose state contradicts itself across chapters.
+
+# WHAT TO REPORT
+
+Only defects that a rewrite of ONE batch can fix. You cannot restructure the book, and
+proposing that wastes the pass. "The middle act drags" is not actionable. "Chapter 9
+resolves the mine collapse offstage, so Kell's decision in Chapter 4 never costs him
+anything" is actionable if the fix lives in one batch.
+
+Each issue must name the absolute batch number to rewrite. Choose the batch where the
+fix belongs, which is often not the batch where you noticed the problem: a payoff that
+never happens is fixed in the batch that should have contained it.
+
+Rank most severe first. Mark severity "severe" only for defects a reader would notice
+and be pulled out of the story by.
+
+# RESTRAINT
+
+An empty issues list is a valid and common answer. Do not manufacture problems to fill
+the list, and do not report matters of taste. Every repair you request costs a full
+rewrite of a batch that currently reads fine, and a bad repair makes the book worse.
+If you are not confident, say pass.
+
+Report unresolvedThreads separately even when you request no repairs — those are worth
+telling the author about whether or not they are fixable here.
+
+No em dashes in your text fields.`;
+}
+
+export function buildBookAuditorUserPrompt(params: {
+  bible: StoryBible;
+  manuscript: string;
+  totalWords: number;
+  validBatchNumbers: number[];
+  /** Findings from the free deterministic checks, fed in as priors. */
+  mechanicalFindings: string[];
+}): string {
+  const { bible, manuscript, totalWords, validBatchNumbers, mechanicalFindings } =
+    params;
+
+  const mechanicalBlock = mechanicalFindings.length
+    ? mechanicalFindings.map((f) => `- ${f}`).join("\n")
+    : "(none — the deterministic checks found nothing)";
+
+  return `# THE PLAN THE BOOK WAS WRITTEN FROM
+
+## Title
+${bible.title}
+
+## Premise
+${bible.premise}
+
+## Structural intent
+- Acts: ${bible.structure.actBreakdown}
+- Inciting: ${bible.structure.inciting}
+- Midpoint: ${bible.structure.midpoint}
+- Climax: ${bible.structure.climax}
+- Resolution: ${bible.structure.resolution}
+
+## Characters as planned
+${bible.characters.map((c) => `- ${c.name} (${c.role}). Arc: ${c.arc}`).join("\n") || "(none)"}
+
+## Planned thread ledger
+${
+  bible.threadLedger?.length
+    ? bible.threadLedger
+        .map((t) => `- [${t.id}] ${t.description} (plant ~${t.plantBatch}, resolve by ~${t.resolveByBatch})`)
+        .join("\n")
+    : "(none planned)"
+}
+
+# MECHANICAL FINDINGS (already verified by code — treat as fact, not opinion)
+${mechanicalBlock}
+
+# VALID BATCH NUMBERS (issues[].batchNumber must be one of these)
+${validBatchNumbers.join(", ")}
+
+# THE FINISHED MANUSCRIPT (${totalWords.toLocaleString()} words)
+${manuscript}
+
+# YOUR TASK
+Read the whole book, then return the structured audit. Remember that every repair you
+request rewrites a batch that currently reads fine.`;
+}

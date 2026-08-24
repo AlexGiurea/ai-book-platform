@@ -10,6 +10,7 @@ export const PIPELINE_VERSION = "v3" as const;
 export type LlmRole =
   | "planner"
   | "plan_auditor"
+  | "book_auditor"
   | "writer"
   | "critic"
   | "revise"
@@ -21,6 +22,7 @@ export type ReasoningEffortLevel = "low" | "medium" | "high";
 export const DEFAULT_ROLE_MODELS = {
   planner: "gpt-5.6-sol",
   plan_auditor: "gpt-5.6-terra",
+  book_auditor: "gpt-5.6-sol",
   writer_free: "gpt-5.6-luna",
   writer_pro: "gpt-5.6-sol",
   critic: "gpt-5.6-terra",
@@ -34,6 +36,7 @@ export const DEFAULT_ROLE_MODELS = {
 export const DEFAULT_REASONING_EFFORT: Record<LlmRole, ReasoningEffortLevel> = {
   planner: "high",
   plan_auditor: "medium",
+  book_auditor: "high",
   writer: "low",
   critic: "medium",
   revise: "medium",
@@ -43,6 +46,7 @@ export const DEFAULT_REASONING_EFFORT: Record<LlmRole, ReasoningEffortLevel> = {
 export interface ProjectModelConfig {
   planner: string;
   plan_auditor: string;
+  book_auditor: string;
   writer: string;
   critic: string;
   revise: string;
@@ -89,6 +93,10 @@ export function resolveLiveModelConfig(
   const plan_auditor = requireNonEmpty(
     readEnvModel("OPENAI_PLAN_AUDITOR_MODEL") ?? DEFAULT_ROLE_MODELS.plan_auditor,
     "plan_auditor"
+  );
+  const book_auditor = requireNonEmpty(
+    readEnvModel("OPENAI_BOOK_AUDITOR_MODEL") ?? DEFAULT_ROLE_MODELS.book_auditor,
+    "book_auditor"
   );
   const critic = requireNonEmpty(
     readEnvModel("OPENAI_CRITIC_MODEL") ?? DEFAULT_ROLE_MODELS.critic,
@@ -139,6 +147,7 @@ export function resolveLiveModelConfig(
   return {
     planner,
     plan_auditor,
+    book_auditor,
     writer,
     critic,
     revise,
@@ -151,6 +160,7 @@ export function hashModelConfig(models: ProjectModelConfig): string {
   const payload = [
     models.planner,
     models.plan_auditor,
+    models.book_auditor,
     models.writer,
     models.critic,
     models.revise,
@@ -195,6 +205,10 @@ export function normalizePipelineConfig(
         obj.models?.plan_auditor ?? live.plan_auditor,
         "plan_auditor"
       ),
+      book_auditor: requireNonEmpty(
+        obj.models?.book_auditor ?? live.book_auditor,
+        "book_auditor"
+      ),
       writer: requireNonEmpty(obj.models?.writer ?? live.writer, "writer"),
       critic: requireNonEmpty(obj.models?.critic ?? live.critic, "critic"),
       revise: requireNonEmpty(obj.models?.revise ?? live.revise, "revise"),
@@ -229,6 +243,8 @@ export function getModelFromConfig(
       return config.models.planner;
     case "plan_auditor":
       return config.models.plan_auditor;
+    case "book_auditor":
+      return config.models.book_auditor;
     case "writer":
       return config.models.writer;
     case "critic":

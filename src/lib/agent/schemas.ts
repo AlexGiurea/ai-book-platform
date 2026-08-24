@@ -209,6 +209,33 @@ export const RevisionVerifierOutputSchema = z.object({
   notes: z.string().nullable(),
 });
 
+export const BookAuditOutputSchema = z.object({
+  verdict: z
+    .enum(["pass", "repair"])
+    .describe("repair only when at least one severe defect is fixable in a single batch"),
+  issues: z
+    .array(
+      z.object({
+        batchNumber: z
+          .number()
+          .describe("Absolute 1-based batch carrying the defect. Must be a real batch."),
+        severity: z.enum(["moderate", "severe"]),
+        description: z
+          .string()
+          .describe("The concrete defect, naming the detail. Not a style note."),
+        fix: z
+          .string()
+          .describe("What the rewrite of that batch must change, in one or two sentences."),
+      })
+    )
+    .describe("Ranked most severe first. Empty is a valid answer."),
+  unresolvedThreads: z
+    .array(z.string())
+    .describe("Threads the book raises with weight and never pays off."),
+  notes: z.string().nullable(),
+});
+
+export type BookAuditOutputParsed = z.infer<typeof BookAuditOutputSchema>;
 export type BatchOutputParsed = z.infer<typeof BatchOutputSchema>;
 export type CritiqueOutputParsed = z.infer<typeof CritiqueOutputSchema>;
 export type StoryBibleParsed = z.infer<typeof StoryBibleSchema>;
