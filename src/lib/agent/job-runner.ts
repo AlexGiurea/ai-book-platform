@@ -17,6 +17,15 @@ import type {
 } from "./types";
 
 /**
+ * Leaves room inside a 300s function for one long job (the planner runs to
+ * 270s) that is started just before the deadline.
+ */
+const DEFAULT_START_DEADLINE_MS = 25_000;
+
+/** Backstop against a job that re-enqueues itself forever. */
+const DEFAULT_MAX_JOBS_PER_DRAIN = 25;
+
+/**
  * Claim and run one queued job.
  *
  * `userId` scopes to one account's projects; `projectId` narrows further to a
@@ -224,6 +233,57 @@ export async function processNextGenerationJob(
   } finally {
     store.endGenerationSession(job.projectId);
   }
+}
+
+/**
+ * Keep claiming and running jobs until the queue is empty or the clock runs out.
+ *
+ * Generation is a chain: each job enqueues the next, so a book only advances as
+ * fast as something calls the runner. Until now the only thing that reliably
+ * did was the browser — the generating page POSTs one job per tick — so closing
+ * the tab stopped the book, and the daily cron would have needed a month to
+ * finish one.
+ *
+ * `startDeadlineMs` is a deadline for STARTING work, not for finishing it. A
+ * planner call can run 270s against a 300s function limit, so a new job is only
+ * picked up while there is room for it to finish; the cron comes back a minute
+ * later for whatever is left. Overlapping drains are safe — claimNextJob is a
+ * single atomic UPDATE, so two workers cannot take the same job.
+ */
+export async function drainGenerationJobs(options: {
+  userId?: string;
+  projectId?: string;
+  /** Stop STARTING jobs once this much time has passed. */
+  startDeadlineMs?: number;
+  maxJobs?: number;
+  /** Seam for tests; production always uses the real runner. */
+  run?: typeof processNextGenerationJob;
+} = {}): Promise<{
+  processed: number;
+  failed: number;
+  drained: boolean;
+  elapsedMs: number;
+}> {
+  const startDeadlineMs = options.startDeadlineMs ?? DEFAULT_START_DEADLINE_MS;
+  const maxJobs = options.maxJobs ?? DEFAULT_MAX_JOBS_PER_DRAIN;
+  const run = options.run ?? processNextGenerationJob;
+  const started = Date.now();
+
+  let processed = 0;
+  let failed = 0;
+  let drained = false;
+
+  while (processed < maxJobs && Date.now() - started < startDeadlineMs) {
+    const result = await run(options.userId, options.projectId);
+    if (!result.processed) {
+      drained = true;
+      break;
+    }
+    processed++;
+    if (result.status === "failed") failed++;
+  }
+
+  return { processed, failed, drained, elapsedMs: Date.now() - started };
 }
 
 async function recoverExhaustedJob(

@@ -43,20 +43,27 @@ const bible = {
 };
 
 describe("granularity config", () => {
-  it("defaults to batch and only accepts an exact chapter opt-in", () => {
-    assert.equal(readWriteGranularity({}), "batch");
+  it("defaults to chapter, the arm that won the A/B", () => {
+    assert.equal(DEFAULT_WRITE_GRANULARITY, "chapter");
+    assert.equal(readWriteGranularity({}), "chapter");
     assert.equal(readWriteGranularity({ FOLIO_WRITE_GRANULARITY: "chapter" }), "chapter");
     assert.equal(readWriteGranularity({ FOLIO_WRITE_GRANULARITY: "CHAPTER" }), "chapter");
     assert.equal(readWriteGranularity({ FOLIO_WRITE_GRANULARITY: " chapter " }), "chapter");
   });
 
-  it("falls back to batch on anything unrecognised, never throws", () => {
+  it("still accepts an explicit batch opt-out, for reproducing an old run", () => {
+    assert.equal(readWriteGranularity({ FOLIO_WRITE_GRANULARITY: "batch" }), "batch");
+    assert.equal(readWriteGranularity({ FOLIO_WRITE_GRANULARITY: " BATCH " }), "batch");
+    assert.equal(normalizeWriteGranularity("batch"), "batch");
+  });
+
+  it("falls back to the default on anything unrecognised, never throws", () => {
     for (const raw of ["", "  ", "chapters", "book", "nonsense", "1"]) {
-      assert.equal(readWriteGranularity({ FOLIO_WRITE_GRANULARITY: raw }), "batch", raw);
+      assert.equal(readWriteGranularity({ FOLIO_WRITE_GRANULARITY: raw }), DEFAULT_WRITE_GRANULARITY, raw);
     }
     assert.equal(normalizeWriteGranularity(undefined), DEFAULT_WRITE_GRANULARITY);
-    assert.equal(normalizeWriteGranularity(null), "batch");
-    assert.equal(normalizeWriteGranularity(7), "batch");
+    assert.equal(normalizeWriteGranularity(null), DEFAULT_WRITE_GRANULARITY);
+    assert.equal(normalizeWriteGranularity(7), DEFAULT_WRITE_GRANULARITY);
   });
 });
 

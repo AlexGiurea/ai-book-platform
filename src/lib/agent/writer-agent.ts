@@ -21,7 +21,11 @@ import {
   rebuildStoryStateBeforeBatch,
 } from "./story-state";
 import { readContextTokenBudget, selectManuscriptWindow } from "./writer-context";
-import { computeLengthGuidance } from "./length-guidance";
+import {
+  CHAPTER_MAX_RATIO,
+  CHAPTER_MIN_RATIO,
+  computeLengthGuidance,
+} from "./length-guidance";
 import {
   chapterTargetWords,
   pendingChapterBlueprints,
@@ -420,8 +424,8 @@ export class WriterAgent {
       totalWords: project.totalWords,
       targetWords: project.targetWords,
       chapterTargetWords: chapterTarget,
-      chapterMinWords: Math.round(chapterTarget * 0.9),
-      chapterMaxWords: Math.round(chapterTarget * 1.1),
+      chapterMinWords: Math.round(chapterTarget * CHAPTER_MIN_RATIO),
+      chapterMaxWords: Math.round(chapterTarget * CHAPTER_MAX_RATIO),
       lengthCorrection: guidance.correction,
     });
 

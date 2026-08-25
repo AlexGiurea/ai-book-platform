@@ -32,6 +32,21 @@ export const LENGTH_TOLERANCE = 0.1;
 export const MIN_TARGET_RATIO = 0.75;
 export const MAX_TARGET_RATIO = 1.1;
 
+/**
+ * A chapter-sized call is given a range, and the model lands near its floor.
+ * Measured in the granularity A/B: with the floor 10% under target, chapter
+ * mode came in 6.5% under per batch and the book landed 8.4% short, where the
+ * same book written per batch landed 1.5% short. Output tokens are the bill, so
+ * the model's incentive points at the floor.
+ *
+ * The floor therefore sits AT the target and only the ceiling carries slack.
+ * Per-batch writing gets fourteen chances for drift correction to claw a
+ * shortfall back; a five-call book gets five, which is not enough to recover
+ * from a floor that invites undershooting in the first place.
+ */
+export const CHAPTER_MIN_RATIO = 1.0;
+export const CHAPTER_MAX_RATIO = 1.08;
+
 /** Drift below this is noise and gets no correction note. */
 export const DRIFT_REPORTING_THRESHOLD = 0.05;
 

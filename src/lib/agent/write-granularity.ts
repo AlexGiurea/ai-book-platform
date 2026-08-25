@@ -21,10 +21,22 @@ import type { BatchBlueprint, StoryBible } from "./types";
 
 export type WriteGranularity = "batch" | "chapter";
 
-export const DEFAULT_WRITE_GRANULARITY: WriteGranularity = "batch";
+/**
+ * Chapter, as of the granularity A/B (25 Aug 2026): same idea, same preset,
+ * same models, one book each. Chapter writing scored 88/100 against 84, cost
+ * 15% less per word of prose, and removed the failure this was built for — the
+ * batch arm narrates one scene twice, the chapter arm does not. Continuity
+ * moved 80 -> 91. Voice moved the other way, 88 -> 84: one call covering 8,400
+ * words flattens character differentiation, which is the price being paid.
+ */
+export const DEFAULT_WRITE_GRANULARITY: WriteGranularity = "chapter";
 
 export function normalizeWriteGranularity(value: unknown): WriteGranularity {
-  return value === "chapter" ? "chapter" : DEFAULT_WRITE_GRANULARITY;
+  // Both values are named explicitly rather than one being "not the other", so
+  // that changing the default cannot silently swallow an opt-out.
+  if (value === "chapter") return "chapter";
+  if (value === "batch") return "batch";
+  return DEFAULT_WRITE_GRANULARITY;
 }
 
 export function readWriteGranularity(
