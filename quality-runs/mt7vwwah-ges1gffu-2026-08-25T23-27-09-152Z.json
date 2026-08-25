@@ -1,0 +1,332 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-25T23:27:09.152Z",
+  "project": {
+    "id": "mt7vwwah-ges1gffu",
+    "title": "Ash on the Tally",
+    "plan": "pro",
+    "pipelineVersion": "v3",
+    "lengthPreset": "medium",
+    "targetWords": 40000,
+    "totalWords": 36635,
+    "batches": 14,
+    "modelConfig": {
+      "models": {
+        "cover": "gpt-image-2",
+        "critic": "gpt-5.6-terra",
+        "revise": "gpt-5.6-sol",
+        "writer": "gpt-5.5",
+        "planner": "gpt-5.6-sol",
+        "book_auditor": "gpt-5.6-sol",
+        "plan_auditor": "gpt-5.6-terra",
+        "revision_verifier": "gpt-5.6-luna"
+      },
+      "configHash": "2ef4bca1",
+      "pipelineVersion": "v3"
+    }
+  },
+  "checks": {
+    "results": [
+      {
+        "id": "total-length",
+        "label": "Total length vs target",
+        "status": "pass",
+        "value": 0.915875,
+        "detail": "36,635 words against a 40,000 target (-8.4%)."
+      },
+      {
+        "id": "batch-length",
+        "label": "Per-batch length discipline",
+        "status": "pass",
+        "value": 0.9345663265306123,
+        "detail": "Batches average -6.5% under their blueprint target; 0 of 14 exceed it by more than 20%."
+      },
+      {
+        "id": "thread-resolution",
+        "label": "Planted threads resolved",
+        "status": "pass",
+        "value": 1,
+        "detail": "1 of 1 planned threads planted and resolved; 0 left open, 0 never planted."
+      },
+      {
+        "id": "character-presence",
+        "label": "Planned characters appear in the text",
+        "status": "pass",
+        "value": 1,
+        "detail": "12 of 12 planned characters appear in the manuscript."
+      },
+      {
+        "id": "em-dash-ban",
+        "label": "Em-dash ban held",
+        "status": "pass",
+        "value": 0,
+        "detail": "No em-dashes survived into the manuscript."
+      },
+      {
+        "id": "repeated-phrases",
+        "label": "Distinctive phrases not reused",
+        "status": "fail",
+        "value": 16,
+        "detail": "16 distinctive 7-word phrases recur 3+ times — a self-plagiarism signal that tracks voice drift.",
+        "items": [
+          "3x \"tera vey brann kord daro pell nima\"",
+          "3x \"vey brann kord daro pell nima olt\"",
+          "3x \"brann kord daro pell nima olt sella\"",
+          "3x \"kord daro pell nima olt sella durn\"",
+          "3x \"daro pell nima olt sella durn iven\"",
+          "3x \"pell nima olt sella durn iven marr\"",
+          "3x \"nima olt sella durn iven marr pava\"",
+          "3x \"olt sella durn iven marr pava noll\"",
+          "3x \"sella durn iven marr pava noll renn\"",
+          "3x \"durn iven marr pava noll renn ollun\"",
+          "3x \"iven marr pava noll renn ollun corren\"",
+          "3x \"marr pava noll renn ollun corren vale\"",
+          "…and 4 more"
+        ]
+      },
+      {
+        "id": "chapter-balance",
+        "label": "Chapter length balance",
+        "status": "pass",
+        "value": 0.11810914349096516,
+        "detail": "Chapter lengths vary by 11.8% (shortest 6,303w, longest 8,695w across 5 chapters)."
+      }
+    ],
+    "passed": 6,
+    "warned": 0,
+    "failed": 1,
+    "skipped": 0
+  },
+  "cost": {
+    "priceListVerifiedOn": "2026-08-24",
+    "measured": true,
+    "totalUsd": 4.9563183,
+    "usdPerThousandWords": 0.1352891579091033,
+    "byRole": [
+      {
+        "role": "writer",
+        "model": "gpt-5.5",
+        "calls": 5,
+        "tokens": {
+          "inputTokens": 137843,
+          "cachedInputTokens": 48384,
+          "cacheWriteTokens": 0,
+          "outputTokens": 60713
+        },
+        "cacheHitRate": 0.3510080308757064,
+        "cost": {
+          "model": "gpt-5.5",
+          "priced": true,
+          "inputCost": 0.447295,
+          "cachedInputCost": 0.024192,
+          "cacheWriteCost": 0,
+          "outputCost": 1.82139,
+          "totalCost": 2.292877
+        }
+      },
+      {
+        "role": "planner",
+        "model": "gpt-5.6-sol",
+        "calls": 4,
+        "tokens": {
+          "inputTokens": 23714,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 23702,
+          "outputTokens": 29417
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.000048,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.11851,
+          "outputCost": 0.58834,
+          "totalCost": 0.706898
+        }
+      },
+      {
+        "role": "revise",
+        "model": "gpt-5.6-sol",
+        "calls": 5,
+        "tokens": {
+          "inputTokens": 222095,
+          "cachedInputTokens": 23252,
+          "cacheWriteTokens": 198828,
+          "outputTokens": 22214
+        },
+        "cacheHitRate": 0.10469393727909228,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.00006,
+          "cachedInputCost": 0.0093008,
+          "cacheWriteCost": 0.99414,
+          "outputCost": 0.44428,
+          "totalCost": 1.4477808
+        }
+      },
+      {
+        "role": "book_auditor",
+        "model": "gpt-5.6-sol",
+        "calls": 1,
+        "tokens": {
+          "inputTokens": 51589,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 51586,
+          "outputTokens": 2576
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.000012,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.25793,
+          "outputCost": 0.05152,
+          "totalCost": 0.309462
+        }
+      },
+      {
+        "role": "critic",
+        "model": "gpt-5.6-terra",
+        "calls": 4,
+        "tokens": {
+          "inputTokens": 57024,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 57012,
+          "outputTokens": 1664
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-terra",
+          "priced": true,
+          "inputCost": 0.000024,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.14253,
+          "outputCost": 0.019968,
+          "totalCost": 0.162522
+        }
+      },
+      {
+        "role": "plan_auditor",
+        "model": "gpt-5.6-terra",
+        "calls": 2,
+        "tokens": {
+          "inputTokens": 7628,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 7622,
+          "outputTokens": 1097
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-terra",
+          "priced": true,
+          "inputCost": 0.000012,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.019055000000000002,
+          "outputCost": 0.013164000000000002,
+          "totalCost": 0.03223100000000001
+        }
+      },
+      {
+        "role": "revision_verifier",
+        "model": "gpt-5.6-luna",
+        "calls": 2,
+        "tokens": {
+          "inputTokens": 13540,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 13534,
+          "outputTokens": 969
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-luna",
+          "priced": true,
+          "inputCost": 0.0000012000000000000002,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.0033835000000000002,
+          "outputCost": 0.0011628,
+          "totalCost": 0.0045475
+        }
+      }
+    ]
+  },
+  "judge": {
+    "judgement": {
+      "prose": {
+        "score": 85,
+        "note": "The manuscript has controlled imagery and strong physical specificity, especially in the coal accident, the detention-channel rescue, and Daro’s work at the capstan. Its chief limitation is an overreliance on polished antithesis—“care, not pardon,” “work under witness,” “facts, not verdict”—that makes many exchanges feel composed rather than spoken."
+      },
+      "continuity": {
+        "score": 91,
+        "note": "The complex accounting remains notably coherent: the extra bowl, Vessa’s falsified allowances, Tera’s paired-transfer marks, Iven’s medicine, Tavin’s wound, and the scow loads all retain consequences. The main lapse is Chapter 5’s skipped transition from Tekiel holding his selected folios to workers having copied every page he carried."
+      },
+      "structure": {
+        "score": 84,
+        "note": "The midpoint discovery that surrender cannot restore people already erased cleanly converts concealment into distribution, and the climax grows from previously demonstrated lock skills rather than arbitrary spectacle. Chapter 1 delays Patient Reed with an extended coal sequence, while the detention rescue, warehouse evacuation, yard closure, and final release arrive in a densely compressed succession across Chapters 4–5."
+      },
+      "voice": {
+        "score": 84,
+        "note": "The counting-and-weighting narration remains consistent from the first bowl to the final tally board, without late-book drift. Individual characters have occupational textures, but Vessa, Sella, Tera, Brann, and even Hobb too often share the same terse, aphoristic syntax and moral precision."
+      },
+      "payoff": {
+        "score": 95,
+        "note": "Nearly every major setup resolves: the extra bowl is revealed as replacement bait, Tera’s fear of paired transfers leads to Jori and Arel, Iven’s coercion both betrays and opens the rescue route, Daro’s disciplined labor releases the scows, and the final visible names answer the opening’s dangerous tally. The dismantling of Patient Reed and the public accounting rules also prevent the victory from ending at mere seizure of the grain."
+      },
+      "overall": 88,
+      "verdict": "This is an unusually coherent, thematically disciplined manuscript whose bureaucratic premise becomes concrete action through scales, signals, copied strips, and lock mechanics; its climax and final image fulfill the opening’s promises with real precision. What most limits it is not continuity but overcomposition: characters repeatedly speak in matching antitheses, themes are explained after they have already been dramatized, and the final movement occasionally compresses difficult logistics into summary.",
+      "issues": [
+        {
+          "severity": "moderate",
+          "chapter": 0,
+          "description": "Dialogue across the ensemble repeatedly uses the same corrective antithesis: Sella says “That is care, not pardon,” Vessa distinguishes “facts, not verdict,” and later the crew frames accountability as “usefulness is not absolution.” The recurrence weakens character differentiation despite their distinct jobs."
+        },
+        {
+          "severity": "moderate",
+          "chapter": 5,
+          "description": "The manuscript jumps from Tekiel retaining selected folios on the flooded platform to workers having “copied every page Tekiel had carried from the burning office.” The seizure, surrender, or supervised copying of those documents is not staged, although possession of them is crucial to making his authority collapse."
+        },
+        {
+          "severity": "moderate",
+          "chapter": 1,
+          "description": "The inciting arrival of Patient Reed comes only after the ration inspection, contradictory coal orders, a full unloading sequence, Renn’s rope accident, and curfew cleanup. Those scenes establish the crew’s collective skill, but the coal operation occupies a disproportionate amount of the opening before the logline’s central problem appears."
+        },
+        {
+          "severity": "minor",
+          "chapter": 4,
+          "description": "The rescue of Hobb and Mara, evacuation of most of the warehouse, exposure of Iven, Tera’s confession, movement of four loaded scows, destruction of the records office, and closure of the counting yard occur in rapid succession. Each event is prepared, but their compression leaves little space for the rescue and confession to alter relationships before the climax begins."
+        },
+        {
+          "severity": "minor",
+          "chapter": 5,
+          "description": "Once the scows clear Seventh Lock, distribution proceeds through the night and following day with accounting disputes but no substantial threat from looting, rival officials, soldiers, or desperate crowds. Given the surrounding civic collapse repeatedly invoked to disable Tekiel, the relative security of the receiving tables feels convenient."
+        },
+        {
+          "severity": "minor",
+          "chapter": 0,
+          "description": "The manuscript often explains its governing ideas after the action has made them clear—for example, visible weights, shared reading, rotating authority, and the distinction between usefulness and pardon are each restated several times in Chapters 3–5. This reduces the force of otherwise effective dramatic demonstrations."
+        },
+        {
+          "severity": "minor",
+          "chapter": 1,
+          "description": "Brann’s repeated insistence that ash is falling at the “wrong hour” is given ominous emphasis in the opening but does not develop into a causal discovery or later decision. It remains atmospheric evidence of instability rather than a fully paid narrative thread."
+        },
+        {
+          "severity": "minor",
+          "chapter": 3,
+          "description": "Mara and Hobb’s detention drives a major moral crisis and rescue, but both remain comparatively thin before they are taken; Mara’s exact stacking and Hobb’s slow speech are almost their only individualized traits. Their capture therefore functions more strongly as pressure on Vessa, Daro, and Tera than as a crisis for two fully developed characters."
+        }
+      ]
+    },
+    "model": "gpt-5.6-sol",
+    "rubricVersion": "1.0.0",
+    "usage": {
+      "inputTokens": 50135,
+      "cachedInputTokens": 0,
+      "cacheWriteTokens": 50132,
+      "outputTokens": 2655
+    },
+    "durationMs": 52432
+  }
+}

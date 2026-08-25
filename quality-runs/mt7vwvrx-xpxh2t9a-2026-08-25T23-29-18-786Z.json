@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-25T23:29:18.786Z",
+  "project": {
+    "id": "mt7vwvrx-xpxh2t9a",
+    "title": "The Uncounted Load",
+    "plan": "pro",
+    "pipelineVersion": "v3",
+    "lengthPreset": "medium",
+    "targetWords": 40000,
+    "totalWords": 39393,
+    "batches": 14,
+    "modelConfig": {
+      "models": {
+        "cover": "gpt-image-2",
+        "critic": "gpt-5.6-terra",
+        "revise": "gpt-5.6-sol",
+        "writer": "gpt-5.5",
+        "planner": "gpt-5.6-sol",
+        "book_auditor": "gpt-5.6-sol",
+        "plan_auditor": "gpt-5.6-terra",
+        "revision_verifier": "gpt-5.6-luna"
+      },
+      "configHash": "2ef4bca1",
+      "pipelineVersion": "v3"
+    }
+  },
+  "checks": {
+    "results": [
+      {
+        "id": "total-length",
+        "label": "Total length vs target",
+        "status": "pass",
+        "value": 0.984825,
+        "detail": "39,393 words against a 40,000 target (-1.5%)."
+      },
+      {
+        "id": "batch-length",
+        "label": "Per-batch length discipline",
+        "status": "pass",
+        "value": 1.0049234693877551,
+        "detail": "Batches average 0.5% over their blueprint target; 1 of 14 exceed it by more than 20%.",
+        "items": [
+          "§1: 3,705w vs 2,800w target (+32.3%)"
+        ]
+      },
+      {
+        "id": "thread-resolution",
+        "label": "Planted threads resolved",
+        "status": "skipped",
+        "detail": "Bible carries no thread ledger — this book predates the v3 planner, so thread payoff cannot be verified mechanically."
+      },
+      {
+        "id": "character-presence",
+        "label": "Planned characters appear in the text",
+        "status": "pass",
+        "value": 1,
+        "detail": "10 of 10 planned characters appear in the manuscript."
+      },
+      {
+        "id": "em-dash-ban",
+        "label": "Em-dash ban held",
+        "status": "pass",
+        "value": 0,
+        "detail": "No em-dashes survived into the manuscript."
+      },
+      {
+        "id": "repeated-phrases",
+        "label": "Distinctive phrases not reused",
+        "status": "pass",
+        "value": 0,
+        "detail": "No 7-word phrase recurs 3 or more times."
+      },
+      {
+        "id": "chapter-balance",
+        "label": "Chapter length balance",
+        "status": "pass",
+        "value": 0.08955751889630569,
+        "detail": "Chapter lengths vary by 9.0% (shortest 6,526w, longest 8,544w across 5 chapters)."
+      }
+    ],
+    "passed": 6,
+    "warned": 0,
+    "failed": 0,
+    "skipped": 1
+  },
+  "cost": {
+    "priceListVerifiedOn": "2026-08-24",
+    "measured": true,
+    "totalUsd": 5.209046,
+    "usdPerThousandWords": 0.1322327824740436,
+    "byRole": [
+      {
+        "role": "writer",
+        "model": "gpt-5.5",
+        "calls": 14,
+        "tokens": {
+          "inputTokens": 459063,
+          "cachedInputTokens": 333824,
+          "cacheWriteTokens": 0,
+          "outputTokens": 69780
+        },
+        "cacheHitRate": 0.7271855932627983,
+        "cost": {
+          "model": "gpt-5.5",
+          "priced": true,
+          "inputCost": 0.626195,
+          "cachedInputCost": 0.166912,
+          "cacheWriteCost": 0,
+          "outputCost": 2.0934,
+          "totalCost": 2.886507
+        }
+      },
+      {
+        "role": "planner",
+        "model": "gpt-5.6-sol",
+        "calls": 4,
+        "tokens": {
+          "inputTokens": 26662,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 26650,
+          "outputTokens": 25193
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.000048,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.13325,
+          "outputCost": 0.50386,
+          "totalCost": 0.637158
+        }
+      },
+      {
+        "role": "revise",
+        "model": "gpt-5.6-sol",
+        "calls": 4,
+        "tokens": {
+          "inputTokens": 164715,
+          "cachedInputTokens": 16425,
+          "cacheWriteTokens": 148278,
+          "outputTokens": 17211
+        },
+        "cacheHitRate": 0.09971769419907112,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.000048,
+          "cachedInputCost": 0.0065699999999999995,
+          "cacheWriteCost": 0.74139,
+          "outputCost": 0.34422,
+          "totalCost": 1.092228
+        }
+      },
+      {
+        "role": "book_auditor",
+        "model": "gpt-5.6-sol",
+        "calls": 1,
+        "tokens": {
+          "inputTokens": 54342,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 54339,
+          "outputTokens": 3177
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-sol",
+          "priced": true,
+          "inputCost": 0.000012,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.271695,
+          "outputCost": 0.06354,
+          "totalCost": 0.335247
+        }
+      },
+      {
+        "role": "plan_auditor",
+        "model": "gpt-5.6-terra",
+        "calls": 2,
+        "tokens": {
+          "inputTokens": 8311,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 8305,
+          "outputTokens": 2013
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-terra",
+          "priced": true,
+          "inputCost": 0.000012,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.0207625,
+          "outputCost": 0.024156,
+          "totalCost": 0.0449305
+        }
+      },
+      {
+        "role": "critic",
+        "model": "gpt-5.6-terra",
+        "calls": 5,
+        "tokens": {
+          "inputTokens": 78454,
+          "cachedInputTokens": 0,
+          "cacheWriteTokens": 78439,
+          "outputTokens": 1404
+        },
+        "cacheHitRate": 0,
+        "cost": {
+          "model": "gpt-5.6-terra",
+          "priced": true,
+          "inputCost": 0.00003,
+          "cachedInputCost": 0,
+          "cacheWriteCost": 0.19609749999999998,
+          "outputCost": 0.016848000000000002,
+          "totalCost": 0.21297549999999998
+        }
+      }
+    ]
+  },
+  "judge": {
+    "judgement": {
+      "prose": {
+        "score": 86,
+        "note": "The dock labor is rendered with tactile authority—gear teeth packed with ash paste, sacks revealing weight through their hang, water pressure speaking through chains—and dialogue gives Dorren, Cassa, Renn, Nali, and Suri recognizable cadences. The chief limitation is over-insistence: nearly every emotional or moral turn is translated into counting, weight, rope, or ledger imagery, so strong motifs sometimes become verbal mannerism."
+      },
+      "continuity": {
+        "score": 80,
+        "note": "The material continuity is unusually disciplined: the broken key, false measure, hidden ledgers, spill channel, crane damage, copied figures, Cassa’s contact, and Jeren’s planted chit all remain active and consequential. Chapter 2, however, contains two versions of Nali discovering Jeren missing, and the promised trip to Avelt “before night bell” appears to slide into the following dawn without explanation."
+      },
+      "structure": {
+        "score": 83,
+        "note": "Escalation is causal and well shaped: concealment enables Jeren’s isolation, his murder destroys Vessa’s private-protection strategy, Avelt’s complicity forces collective action, and the rescue of Nali makes retreat impossible before the warehouse fire. The five very long chapters contain repeated cycles of inspection, relocation, copying, signaling, and rumor that could be compressed, particularly before the midpoint and during the extended climax."
+      },
+      "voice": {
+        "score": 88,
+        "note": "The narration sustains a distinctive working-class consciousness from the opening false count through the final public ledger, consistently interpreting power through material processes rather than distant revolutionary spectacle. Its consistency occasionally becomes rigidity, with repeated constructions such as “not X, but Y” and nearly universal recourse to accountancy metaphors."
+      },
+      "payoff": {
+        "score": 93,
+        "note": "The manuscript pays off its major promises with exceptional thoroughness: Renn’s wrongward water and forgotten channel beach the fire barge, Dorren’s machinery knowledge and Cassa’s crane work break the doors, Nali’s copied sums expose Avelt, the grain gantry kills Vey as he reaches for his book, and Vessa’s private slate becomes an inspectable ration board. The final entry of Jeren under “Owed” completes both the opening tally motif and Vessa’s moral arc without falsely converting his death into heroic payment."
+      },
+      "overall": 84,
+      "verdict": "This is an accomplished, highly coherent industrial-fantasy novella with excellent command of labor detail, collective action, and setup-to-payoff construction; its climax is earned through tools, skills, and choices established from the first chapter. It falls short of top-tier publication chiefly because of a conspicuous duplicated scene, some timeline blur, an overextended final action sequence, and a thematic vocabulary so relentlessly reiterated that it occasionally feels engineered rather than discovered.",
+      "issues": [
+        {
+          "severity": "moderate",
+          "chapter": 2,
+          "description": "Jeren’s disappearance is narrated twice in immediate succession. First Nali touches Vessa’s shoulder and says “Jeren is gone,” prompting a search plan; the next section restarts the same discovery with “Nali did not wake her with a hand” and again reports that he left during the night with a copied page."
+        },
+        {
+          "severity": "moderate",
+          "chapter": 3,
+          "description": "After returning Jeren’s body, Vessa explicitly says “Avelt before night bell,” but the subsequent office sequence opens after Nali has wrapped the original ledger “before dawn.” The manuscript does not explain whether the meeting was delayed overnight or why the stated deadline changed."
+        },
+        {
+          "severity": "moderate",
+          "chapter": 0,
+          "description": "The count/weight/ledger motif is applied to nearly every register of experience—grief, trust, injury, loyalty, danger, and solidarity—through phrases such as “the room’s weight,” “debts come due,” and danger being “entered.” The repetition weakens imagery that is powerful when reserved for decisive moments."
+        },
+        {
+          "severity": "minor",
+          "chapter": 5,
+          "description": "The climax continues through several successive operational peaks—the spill release, crane strikes, Bilt’s burning, partial grain drop, public evidence transfer, full gantry collapse, Avelt’s exposure, firefighting, medical accounting, reconciliation, distribution, memorial, and salvage. Each is individually effective, but their accumulation dilutes the force of Vey’s death and the gantry collapse as the central climax."
+        },
+        {
+          "severity": "minor",
+          "chapter": 0,
+          "description": "Bilt, Fen, and Hallen remain substantially less individuated than Dorren, Nali, Cassa, Renn, Suri, Mira, and Kett. Bilt’s climactic burn is consequential, but the preceding manuscript gives him little identity beyond his place in the labor formation and his pairing with Fen."
+        },
+        {
+          "severity": "minor",
+          "chapter": 1,
+          "description": "The manuscript repeatedly calls the workers “eleven bodies” or “all eleven names” while Vessa is also physically part of the working group. The meal scene eventually clarifies that there are eleven workers plus Vessa, but the initial terminology momentarily makes the crew size appear inconsistent."
+        }
+      ]
+    },
+    "model": "gpt-5.6-sol",
+    "rubricVersion": "1.0.0",
+    "usage": {
+      "inputTokens": 53622,
+      "cachedInputTokens": 0,
+      "cacheWriteTokens": 53619,
+      "outputTokens": 2730
+    },
+    "durationMs": 55938
+  }
+}
