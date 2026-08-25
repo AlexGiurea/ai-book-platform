@@ -1318,6 +1318,60 @@ export class ContextStore {
     return rows[0] ? mapJob(rows[0]) : undefined;
   }
 
+  /**
+   * Put a project's failed and stale-running jobs back on the queue.
+   *
+   * enqueueJob returns the existing row whenever a dedupe key is already
+   * present, so a book that died on something transient — an API outage, an
+   * exhausted account balance, a closed laptop — cannot be restarted by
+   * enqueuing again. The rows carrying its keys have to be reset. Safe to call
+   * repeatedly: every job type is idempotent on replay, and work already
+   * finished is skipped without a model call.
+   */
+  async requeueFailedJobs(projectId: string): Promise<number> {
+    const now = new Date().toISOString();
+    if (!this.persistent) {
+      const staleMs = Date.now() - 6 * 60 * 1000;
+      let count = 0;
+      for (const job of memory.jobs.values()) {
+        if (job.projectId !== projectId) continue;
+        const stuck =
+          job.status === "failed" ||
+          (job.status === "running" &&
+            !!job.lockedAt &&
+            new Date(job.lockedAt).getTime() < staleMs);
+        if (!stuck) continue;
+        job.status = "queued";
+        job.attempts = 0;
+        job.error = undefined;
+        job.lockedAt = undefined;
+        job.completedAt = undefined;
+        job.runAfter = now;
+        job.updatedAt = now;
+        count++;
+      }
+      return count;
+    }
+
+    const rows = (await getSql()`
+      update generation_jobs
+      set status = 'queued',
+          attempts = 0,
+          error = null,
+          locked_at = null,
+          completed_at = null,
+          run_after = ${now},
+          updated_at = ${now}
+      where project_id = ${projectId}
+        and (
+          status = 'failed'
+          or (status = 'running' and locked_at < now() - interval '6 minutes')
+        )
+      returning id
+    `) as { id: string }[];
+    return rows.length;
+  }
+
   /** For UI: job queue / lock state while diagnosing stuck planning. */
   async listGenerationJobsForProject(projectId: string): Promise<GenerationJob[]> {
     if (!this.persistent) {

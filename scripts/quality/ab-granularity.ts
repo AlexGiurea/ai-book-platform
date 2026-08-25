@@ -129,6 +129,17 @@ async function main(): Promise<void> {
     console.log(
       `[${stamp()}] arm=${arm} resuming ${projectId} (status=${existing.status})`
     );
+
+    // A run that died on something transient leaves failed rows holding the
+    // dedupe keys, and a project stamped "failed" that the drain loop would
+    // exit on immediately. Clear both before entering the loop.
+    const requeued = await store.requeueFailedJobs(projectId);
+    if (requeued) console.log(`[${stamp()}] arm=${arm} requeued ${requeued} stuck job(s)`);
+    if (existing.status === "failed" || existing.status === "cancelled") {
+      const next = existing.bible ? "writing" : "queued";
+      await store.updateStatus(projectId, next);
+      console.log(`[${stamp()}] arm=${arm} status ${existing.status} -> ${next}`);
+    }
   } else {
     const project = await store.createProject(
       {
