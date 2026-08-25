@@ -243,6 +243,53 @@ describe("repeated phrases", () => {
   it("skips a manuscript too short to sample", () => {
     assert.equal(checkRepeatedPhrases(input({ batches: [batch(1, 3, "too short")] })).status, "skipped");
   });
+
+  it("reports a long repeated passage once, not once per sliding window", () => {
+    // The real case: a 22-word crew roster read out three times contains 16
+    // overlapping 7-word windows, and each used to count as its own finding —
+    // enough to trip the >8 FAIL threshold on a book the judge scored 88.
+    const roster =
+      "tera vey brann kord daro pell nima olt sella durn iven " +
+      "marr pava noll renn ollun corren vale mara quill hobb nent";
+    const filler = (seed: number) =>
+      Array.from({ length: 40 }, (_, i) => `lexeme${seed * 1000 + i}`).join(" ");
+    const prose = [filler(1), roster, filler(2), roster, filler(3), roster, filler(4)].join(" ");
+
+    const result = checkRepeatedPhrases(input({ batches: [batch(1, 400, prose)] }));
+    assert.equal(result.value, 1, "one repeated passage is one finding");
+    assert.equal(result.status, "warn", "one motif must not read as a failure");
+    assert.match(result.items?.[0] ?? "", /^3x \(22 words\)/);
+  });
+
+  it("groups occurrences whose surrounding words differ", () => {
+    // Each occurrence sits in different context, so the maximal runs have
+    // different edges and never match as strings. They still share windows.
+    const core = "the tally board carried eleven names in one unbroken column";
+    const prose = [
+      "she found tera writing on a narrow strip and", core, "before vessa could speak",
+      Array.from({ length: 40 }, (_, i) => `alpha${i}`).join(" "),
+      "he untied the cord and spread the winter roll where", core, "each held a labour sign",
+      Array.from({ length: 40 }, (_, i) => `beta${i}`).join(" "),
+      "she scrubbed away the chalk ghosts and then wrote how", core, "with no loss column",
+    ].join(" ");
+
+    const result = checkRepeatedPhrases(input({ batches: [batch(1, 400, prose)] }));
+    assert.equal(result.value, 1, "same passage in three contexts is still one passage");
+  });
+
+  it("keeps genuinely distinct repeated passages separate", () => {
+    const first = "moonlight fractured across the obsidian harbour stones below";
+    const second = "ash settled through the broken skylight onto rusted gantry rails";
+    const filler = (seed: number) =>
+      Array.from({ length: 40 }, (_, i) => `token${seed * 1000 + i}`).join(" ");
+    const prose = [
+      filler(1), first, filler(2), second, filler(3), first,
+      filler(4), second, filler(5), first, filler(6), second, filler(7),
+    ].join(" ");
+
+    const result = checkRepeatedPhrases(input({ batches: [batch(1, 400, prose)] }));
+    assert.equal(result.value, 2);
+  });
 });
 
 describe("chapter balance", () => {

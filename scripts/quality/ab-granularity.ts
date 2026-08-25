@@ -40,10 +40,12 @@ const AB_IDEA = [
 const AB_PREFERENCES = {
   genre: "Fantasy",
   tone: "Dark",
-  length: "medium" as const,
   imageStyle: "none",
   pov: "third",
 };
+
+const LENGTHS = ["dev", "short", "medium", "long", "large", "tome"] as const;
+type Length = (typeof LENGTHS)[number];
 
 const AB_USER_ID = "moexozgv-jdklq57w";
 const AB_PLAN = "pro" as const;
@@ -77,6 +79,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function parseArgs(argv: string[]) {
   let arm: "batch" | "chapter" | undefined;
   let resumeId: string | undefined;
+  let length: Length = "medium";
+  let expectWriter: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--arm") {
       const raw = argv[++i];
@@ -86,10 +90,18 @@ function parseArgs(argv: string[]) {
       arm = raw;
     } else if (argv[i] === "--resume") {
       resumeId = argv[++i];
+    } else if (argv[i] === "--length") {
+      const raw = argv[++i] as Length;
+      if (!LENGTHS.includes(raw)) {
+        throw new Error(`--length must be one of ${LENGTHS.join("|")}, got "${raw}"`);
+      }
+      length = raw;
+    } else if (argv[i] === "--expect-writer") {
+      expectWriter = argv[++i];
     }
   }
   if (!arm) throw new Error("--arm batch|chapter is required");
-  return { arm, resumeId };
+  return { arm, resumeId, length, expectWriter };
 }
 
 function stamp(): string {
@@ -107,7 +119,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const { arm, resumeId } = parseArgs(process.argv.slice(2));
+  const { arm, resumeId, length, expectWriter } = parseArgs(process.argv.slice(2));
 
   // Set before any pipeline module is imported. readWriteGranularity() reads
   // process.env per call, but setting it first removes the question entirely.
@@ -144,7 +156,7 @@ async function main(): Promise<void> {
     const project = await store.createProject(
       {
         idea: AB_IDEA,
-        preferences: AB_PREFERENCES,
+        preferences: { ...AB_PREFERENCES, length },
         inputMode: "text",
         contextFileNames: [],
       },
@@ -166,7 +178,7 @@ async function main(): Promise<void> {
           projectId,
           arm,
           startedAt: new Date().toISOString(),
-          preferences: AB_PREFERENCES,
+          preferences: { ...AB_PREFERENCES, length },
           note: "write-granularity A/B; idea and preset match project mt6n4x6i-y4v2r7py",
         },
         null,
@@ -174,7 +186,24 @@ async function main(): Promise<void> {
       ),
       "utf8"
     );
-    console.log(`[${stamp()}] arm=${arm} created ${projectId}`);
+    console.log(
+      `[${stamp()}] arm=${arm} created ${projectId} · length=${length} (${project.targetWords.toLocaleString()}w)`
+    );
+  }
+
+  // Print the snapshotted config, and refuse to spend if it is not what was
+  // asked for. The first A/B ran entirely on gpt-5.5 because a stale env
+  // override reached the writer role and nothing checked.
+  {
+    const p = await store.getProject(projectId);
+    const models = p?.modelConfig?.models;
+    console.log(`[${stamp()}] arm=${arm} models ${JSON.stringify(models)}`);
+    if (expectWriter && models?.writer !== expectWriter) {
+      throw new Error(
+        `Writer model is "${models?.writer}", expected "${expectWriter}". ` +
+          `Check OPENAI_MODEL / OPENAI_WRITER_MODEL_PRO in .env.local.`
+      );
+    }
   }
 
   const startedAt = Date.now();

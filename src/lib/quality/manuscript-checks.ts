@@ -272,26 +272,117 @@ export function checkRepeatedPhrases(input: CheckInput): CheckResult {
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
-  const repeated = [...counts.entries()]
-    .filter(([, n]) => n >= MIN_OCCURRENCES)
-    .sort((a, b) => b[1] - a[1]);
+  const repeatedKeys = new Set(
+    [...counts.entries()].filter(([, n]) => n >= MIN_OCCURRENCES).map(([k]) => k)
+  );
+
+  const passages = collapseRepeatedShingles(words, counts, repeatedKeys);
 
   const status: CheckStatus =
-    repeated.length > 8 ? "fail" : repeated.length > 0 ? "warn" : "pass";
+    passages.length > 8 ? "fail" : passages.length > 0 ? "warn" : "pass";
 
   return {
     id: "repeated-phrases",
     label: "Distinctive phrases not reused",
     status,
-    value: repeated.length,
+    value: passages.length,
     detail:
-      repeated.length === 0
+      passages.length === 0
         ? `No ${SHINGLE_SIZE}-word phrase recurs ${MIN_OCCURRENCES} or more times.`
-        : `${repeated.length} distinctive ${SHINGLE_SIZE}-word phrases recur ${MIN_OCCURRENCES}+ times — a self-plagiarism signal that tracks voice drift.`,
-    items: repeated.length
-      ? cap(repeated.map(([phrase, n]) => `${n}x "${phrase}"`))
+        : `${passages.length} distinct ${passages.length === 1 ? "passage recurs" : "passages recur"} ${MIN_OCCURRENCES}+ times verbatim — a self-plagiarism signal that tracks voice drift.`,
+    items: passages.length
+      ? cap(
+          passages.map(
+            (p) => `${p.occurrences}x (${p.words} words) "${truncate(p.text)}"`
+          )
+        )
       : undefined,
   };
+}
+
+interface RepeatedPassage {
+  text: string;
+  words: number;
+  occurrences: number;
+}
+
+function truncate(text: string, limit = 90): string {
+  return text.length <= limit ? text : `${text.slice(0, limit - 1)}…`;
+}
+
+/**
+ * Turn repeated shingles into the passages they actually came from.
+ *
+ * Counting each ${SHINGLE_SIZE}-word window on its own massively overstates the
+ * problem: a single repeated 22-word passage contains 16 overlapping windows and
+ * was reported as 16 separate findings, which is how a deliberate motif — the
+ * same crew roster read out three times, once hidden, once official, once
+ * public — turned into a FAIL on a book the judge scored 88.
+ *
+ * Two steps fix it. Consecutive repeated windows are walked into one maximal
+ * passage, and passages sharing any window are grouped, because the same text
+ * repeated in three places yields three runs whose edges differ with their
+ * surroundings and so never match exactly.
+ */
+function collapseRepeatedShingles(
+  words: string[],
+  counts: Map<string, number>,
+  repeatedKeys: Set<string>
+): RepeatedPassage[] {
+  const lastStart = words.length - SHINGLE_SIZE;
+  const runs: { text: string; words: number; occurrences: number; keys: string[] }[] = [];
+
+  for (let i = 0; i <= lastStart; ) {
+    const key = words.slice(i, i + SHINGLE_SIZE).join(" ");
+    if (!repeatedKeys.has(key)) {
+      i++;
+      continue;
+    }
+    const keys = [key];
+    let end = i;
+    let occurrences = counts.get(key) ?? MIN_OCCURRENCES;
+    while (end < lastStart) {
+      const nextKey = words.slice(end + 1, end + 1 + SHINGLE_SIZE).join(" ");
+      if (!repeatedKeys.has(nextKey)) break;
+      keys.push(nextKey);
+      occurrences = Math.min(occurrences, counts.get(nextKey) ?? occurrences);
+      end++;
+    }
+    runs.push({
+      text: words.slice(i, end + SHINGLE_SIZE).join(" "),
+      words: end + SHINGLE_SIZE - i,
+      occurrences,
+      keys,
+    });
+    i = end + 1;
+  }
+
+  // Group runs that share a window: those are the same passage seen again.
+  const groupOfKey = new Map<string, number>();
+  const groups: RepeatedPassage[] = [];
+  for (const run of runs) {
+    let group = -1;
+    for (const key of run.keys) {
+      const existing = groupOfKey.get(key);
+      if (existing !== undefined) {
+        group = existing;
+        break;
+      }
+    }
+    if (group === -1) {
+      group = groups.length;
+      groups.push({ text: run.text, words: run.words, occurrences: run.occurrences });
+    } else if (run.words > groups[group].words) {
+      groups[group].text = run.text;
+      groups[group].words = run.words;
+    }
+    groups[group].occurrences = Math.max(groups[group].occurrences, run.occurrences);
+    for (const key of run.keys) groupOfKey.set(key, group);
+  }
+
+  return groups.sort(
+    (a, b) => b.occurrences - a.occurrences || b.words - a.words
+  );
 }
 
 // ─── 7. Chapter length balance ────────────────────────────────
