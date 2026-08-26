@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { store } from "@/lib/agent";
 import { getCurrentUser } from "@/lib/auth/session";
+import { settleWords } from "@/lib/billing/ledger";
 import { rejectCrossOrigin } from "@/lib/security/request";
 
 export const runtime = "nodejs";
@@ -28,5 +29,23 @@ export async function POST(
     }
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+
+  // Give back the words this book will now never write. Settling against the
+  // prose that already exists means someone who cancels at 80% keeps paying for
+  // the 80% they can still read, and gets the rest back.
+  const cancelled = await store.getProject(id);
+  try {
+    await settleWords({
+      projectId: id,
+      actualWords: cancelled?.totalWords ?? 0,
+      note: "cancelled by the author",
+    });
+  } catch (err) {
+    console.warn(
+      "[folio] cancel settlement failed",
+      err instanceof Error ? err.message : String(err)
+    );
+  }
+
   return NextResponse.json({ ok: true });
 }

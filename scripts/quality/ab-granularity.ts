@@ -48,7 +48,7 @@ const LENGTHS = ["dev", "short", "medium", "long", "large", "tome"] as const;
 type Length = (typeof LENGTHS)[number];
 
 const AB_USER_ID = "moexozgv-jdklq57w";
-const AB_PLAN = "pro" as const;
+const AB_PLAN = "novelist" as const;
 
 /** No job claimable and the project is not finished: back off, then re-poll. */
 const STALL_SLEEP_MS = 15_000;

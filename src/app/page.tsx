@@ -1043,11 +1043,11 @@ function PricingPreview() {
           Pricing
         </p>
         <h2 className="font-serif text-3xl font-bold text-ink-500 md:text-4xl">
-          Start free, move to Pro when the book gets serious
+          Buy words, not seats
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-ink-300">
-          Free is wired for GPT-5.4 mini. Pro is wired for GPT-5.5 and is the
-          current beta default while payments are off.
+          Every plan runs the same pipeline. What changes is how many words
+          a month you get — 12,000 free, 40,000 on Author, 120,000 on Novelist.
         </p>
       </motion.div>
 

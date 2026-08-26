@@ -37,8 +37,19 @@ export function getAppBaseUrl(request: Request): string {
 }
 
 export function getPriceIdForPlan(plan: SubscriptionPlan): string | null {
-  if (plan !== "pro") return null;
-  return process.env[PLAN_DEFINITIONS.pro.stripePriceEnv ?? ""] ?? null;
+  const env = PLAN_DEFINITIONS[plan].stripePriceEnv;
+  if (!env) return null;
+  return process.env[env] ?? null;
+}
+
+/** Reverse lookup, so a webhook can tell which tier was actually bought. */
+export function getPlanForPriceId(priceId: string | null): SubscriptionPlan | null {
+  if (!priceId) return null;
+  for (const definition of Object.values(PLAN_DEFINITIONS)) {
+    if (!definition.stripePriceEnv) continue;
+    if (process.env[definition.stripePriceEnv] === priceId) return definition.id;
+  }
+  return null;
 }
 
 export async function getOrCreateStripeCustomer(user: AuthUser): Promise<string> {
@@ -74,8 +85,12 @@ export async function syncSubscriptionToUser(subscription: Stripe.Subscription) 
   const periodEnd = subscription.items.data[0]?.current_period_end
     ? new Date(subscription.items.data[0].current_period_end * 1000).toISOString()
     : null;
-  const plan: SubscriptionPlan =
-    status === "active" || status === "trialing" ? "pro" : "free";
+  // Which tier, not merely "paid" — the two paid plans have different
+  // allowances, so resolving the price back to a plan is load-bearing.
+  const active = status === "active" || status === "trialing";
+  const plan: SubscriptionPlan = active
+    ? getPlanForPriceId(priceId) ?? "author"
+    : "free";
 
   await getSql()`
     update users

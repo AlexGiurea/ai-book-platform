@@ -12,7 +12,12 @@ import {
   Zap,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import { PLAN_DEFINITIONS, PLAN_ORDER } from "@/lib/plans";
+import {
+  PLAN_DEFINITIONS,
+  PLAN_ORDER,
+  usdPer1kWords,
+  type SubscriptionPlan,
+} from "@/lib/plans";
 import { useAuthUser } from "@/hooks/useAuthUser";
 
 const plans = PLAN_ORDER.map((id) => PLAN_DEFINITIONS[id]);
@@ -21,14 +26,18 @@ export default function PricingPage() {
   const { signedIn, user } = useAuthUser();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
-  async function startProCheckout() {
+  async function startCheckout(planId: SubscriptionPlan) {
     if (!signedIn) {
-      window.location.href = "/signup?plan=pro";
+      window.location.assign(`/signup?plan=${planId}`);
       return;
     }
-    setLoadingPlan("pro");
+    setLoadingPlan(planId);
     try {
-      const response = await fetch("/api/billing/checkout", { method: "POST" });
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan: planId }),
+      });
       const data = (await response.json().catch(() => ({}))) as {
         url?: string;
         error?: string;
@@ -36,7 +45,7 @@ export default function PricingPage() {
       if (!response.ok || !data.url) {
         throw new Error(data.error ?? "Could not start billing.");
       }
-      window.location.href = data.url;
+      window.location.assign(data.url);
     } catch (error) {
       window.alert(
         error instanceof Error
@@ -74,9 +83,10 @@ export default function PricingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.12, duration: 0.65 }}
           >
-            Free gives readers and early writers a lower-cost path to test the
-            workflow. Pro unlocks the full book engine, the stronger model, and
-            the publishing-grade capabilities Folio is being built around.
+            You buy words, not seats. Every plan runs the same pipeline —
+            planning, chapter writing, continuity audit, repair — and the only
+            thing that changes is how many words a month you get, and which
+            model writes them.
           </motion.p>
         </section>
 
@@ -87,9 +97,9 @@ export default function PricingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.16, duration: 0.5 }}
           >
-            Stripe Checkout and the customer portal are wired in code, but billing
-            stays off until the Stripe keys and Pro price ID are configured.
-            Owner and beta accounts can still be provisioned on Pro.
+            Checkout is wired in code but payments are off, so nothing is
+            charged yet. Word allowances are already live and enforced — your
+            account meter on the dashboard is real.
           </motion.div>
         </section>
 
@@ -135,29 +145,41 @@ export default function PricingPage() {
                       : "text-[10px] font-semibold uppercase tracking-[0.18em] text-ember-600"
                   }
                 >
-                  Model
+                  Words each month
                 </p>
-                <p className="mt-2 font-serif text-2xl font-semibold">
-                  {plan.modelLabel}
+                <p className="mt-2 font-serif text-3xl font-semibold">
+                  {plan.monthlyWords.toLocaleString()}
                 </p>
                 <p className={plan.featured ? "mt-1 text-sm text-parchment-400" : "mt-1 text-sm text-ink-300"}>
-                  {plan.bestFor}
+                  {plan.allowanceExample}
+                </p>
+                <p
+                  className={
+                    plan.featured
+                      ? "mt-3 border-t border-white/10 pt-3 text-xs text-parchment-400"
+                      : "mt-3 border-t border-ink-100/60 pt-3 text-xs text-ink-300"
+                  }
+                >
+                  {plan.modelLabel}
+                  {usdPer1kWords(plan.id) > 0
+                    ? ` · $${usdPer1kWords(plan.id).toFixed(2)} per 1,000 words`
+                    : " · no card required"}
                 </p>
               </div>
-              {plan.id === "pro" ? (
+              {plan.id !== "free" ? (
                 <button
                   type="button"
-                  onClick={startProCheckout}
-                  disabled={loadingPlan === "pro" || user?.plan === "pro"}
+                  onClick={() => startCheckout(plan.id)}
+                  disabled={loadingPlan === plan.id || user?.plan === plan.id}
                   className={
                     plan.featured
                       ? "mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ember-500 px-5 py-3 text-sm font-medium text-white shadow-ember transition hover:bg-ember-600 disabled:cursor-not-allowed disabled:opacity-70"
                       : "mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-medium text-ink-500 shadow-warm-sm transition hover:bg-parchment-50 disabled:cursor-not-allowed disabled:opacity-70"
                   }
                 >
-                  {user?.plan === "pro"
+                  {user?.plan === plan.id
                     ? "Current plan"
-                    : loadingPlan === "pro"
+                    : loadingPlan === plan.id
                       ? "Opening Checkout..."
                       : plan.cta}
                   <ArrowRight size={15} />
@@ -194,8 +216,8 @@ export default function PricingPage() {
 
         <section className="mt-12 grid gap-5 md:grid-cols-3">
           {[
-            { icon: Sparkles, title: "Plan-aware models", body: "Free is wired for GPT-5.4 mini. Pro is wired for GPT-5.5." },
-            { icon: FileText, title: "Publishing path", body: "Pro is where longer books, PDF, EPUB, and cover polish will live." },
+            { icon: Sparkles, title: "Priced by the word", body: "A short book costs less than an epic, because it costs us less to write." },
+            { icon: FileText, title: "Unused words return", body: "A book that lands short, or one you cancel, credits the difference back." },
             { icon: ShieldCheck, title: "Account-owned", body: "Projects stay tied to your signed-in account and private library." },
             { icon: Zap, title: "Billing-ready", body: "Checkout, portal, webhooks, and plan sync are prepared without launching payments." },
           ].map(({ icon: Icon, title, body }) => (

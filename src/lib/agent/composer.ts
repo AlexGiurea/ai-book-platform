@@ -1,4 +1,5 @@
 import { bookAuditorAgent } from "./book-auditor-agent";
+import { settleWords } from "@/lib/billing/ledger";
 import { store, WORDS_PER_BATCH } from "./context-store";
 import { coverAgent } from "./cover-agent";
 import { criticAgent } from "./critic-agent";
@@ -346,9 +347,25 @@ export class BookComposer {
   ): Promise<"complete"> {
     await store.updateStatus(projectId, "complete");
     const finalProject = await store.getProject(projectId);
+    const totalWords = finalProject?.totalWords ?? 0;
+
+    // Settle the word reserve against what was actually delivered. Books land a
+    // few percent either side of target, so this is usually a small credit
+    // back — charging the target and keeping the difference would be theft in
+    // the common case, since the pipeline undershoots more often than it
+    // overshoots. Never allowed to block completion: the book exists either way.
+    try {
+      await settleWords({ projectId, actualWords: totalWords });
+    } catch (err) {
+      console.warn(
+        "[folio] word settlement failed",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+
     await store.appendEvent(projectId, {
       type: "project_complete",
-      totalWords: finalProject?.totalWords ?? 0,
+      totalWords,
       model,
     });
     return "complete";

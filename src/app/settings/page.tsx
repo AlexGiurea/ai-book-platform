@@ -317,7 +317,7 @@ export default function SettingsPage() {
           <Divider />
           <SegmentedRow
             title="Default length"
-            description="A starting target — Pro accounts can extend on a per-book basis."
+            description="A starting target. Each book spends its length from your monthly word allowance."
             value={prefs.defaultLength}
             onChange={(v) => updatePref("defaultLength", v)}
             options={[

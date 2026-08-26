@@ -21,8 +21,10 @@ export type ReasoningEffortLevel = "low" | "medium" | "high";
 /** Default role models — Literary Pro route (writer/reviser Sol). */
 export const DEFAULT_ROLE_MODELS = {
   planner: "gpt-5.6-sol",
+  planner_free: "gpt-5.6-terra",
   plan_auditor: "gpt-5.6-terra",
   book_auditor: "gpt-5.6-sol",
+  book_auditor_free: "gpt-5.6-terra",
   writer_free: "gpt-5.6-luna",
   writer_pro: "gpt-5.6-sol",
   critic: "gpt-5.6-terra",
@@ -94,8 +96,16 @@ export function resolveLiveModelConfig(
 ): ProjectModelConfig {
   const normalized = normalizePlan(plan);
 
+  // Planner and book auditor are tiered because they dominate a free book's
+  // cost, not because free users deserve less thinking. Measured on a medium
+  // book: the planner alone is $0.68 (it emits ~29,000 tokens of blueprint) and
+  // the auditor $0.26, against $0.17 for a Luna writer and reviser combined —
+  // so 87% of a "free" book was being served on the most expensive model.
   const planner = requireNonEmpty(
-    readEnvModel("OPENAI_PLANNER_MODEL") ?? DEFAULT_ROLE_MODELS.planner,
+    readEnvModel("OPENAI_PLANNER_MODEL") ??
+      (normalized === "free"
+        ? DEFAULT_ROLE_MODELS.planner_free
+        : DEFAULT_ROLE_MODELS.planner),
     "planner"
   );
   const plan_auditor = requireNonEmpty(
@@ -103,7 +113,10 @@ export function resolveLiveModelConfig(
     "plan_auditor"
   );
   const book_auditor = requireNonEmpty(
-    readEnvModel("OPENAI_BOOK_AUDITOR_MODEL") ?? DEFAULT_ROLE_MODELS.book_auditor,
+    readEnvModel("OPENAI_BOOK_AUDITOR_MODEL") ??
+      (normalized === "free"
+        ? DEFAULT_ROLE_MODELS.book_auditor_free
+        : DEFAULT_ROLE_MODELS.book_auditor),
     "book_auditor"
   );
   const critic = requireNonEmpty(
@@ -294,7 +307,7 @@ export function getReasoningEffortForRole(
 /** Validate that all default / live model IDs are non-empty (no network). */
 export function validateModelConfigAtStartup(): void {
   createPipelineConfig("free");
-  createPipelineConfig("pro");
+  createPipelineConfig("author");
 }
 
 // Run once on module load in server contexts.

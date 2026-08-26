@@ -143,7 +143,7 @@ describe("blank-safe env", () => {
     process.env.OPENAI_WRITER_MODEL_PRO = "  ";
     process.env.OPENAI_PRO_MODEL = "";
     process.env.OPENAI_IMAGE_MODEL = "";
-    const cfg = createPipelineConfig("pro");
+    const cfg = createPipelineConfig("author");
     assert.equal(cfg.models.planner, DEFAULT_ROLE_MODELS.planner);
     assert.equal(cfg.models.writer, DEFAULT_ROLE_MODELS.writer_pro);
     assert.equal(cfg.models.cover, DEFAULT_ROLE_MODELS.cover);
@@ -153,12 +153,12 @@ describe("blank-safe env", () => {
 
 describe("project model snapshot stability", () => {
   it("keeps snapshotted models when process.env changes", () => {
-    const snap = createPipelineConfig("pro");
+    const snap = createPipelineConfig("author");
     const prev = process.env.OPENAI_WRITER_MODEL_PRO;
     process.env.OPENAI_WRITER_MODEL_PRO = "gpt-5.6-terra";
-    const live = createPipelineConfig("pro");
+    const live = createPipelineConfig("author");
     assert.equal(live.models.writer, "gpt-5.6-terra");
-    const normalized = normalizePipelineConfig(snap, "pro");
+    const normalized = normalizePipelineConfig(snap, "author");
     assert.equal(normalized.models.writer, snap.models.writer);
     assert.notEqual(normalized.models.writer, live.models.writer);
     if (prev === undefined) delete process.env.OPENAI_WRITER_MODEL_PRO;
@@ -170,7 +170,7 @@ describe("project model snapshot stability", () => {
     const prevR = process.env.OPENAI_REVISE_MODEL_PRO;
     process.env.OPENAI_WRITER_MODEL_PRO = "gpt-5.6-terra";
     delete process.env.OPENAI_REVISE_MODEL_PRO;
-    const cfg = createPipelineConfig("pro");
+    const cfg = createPipelineConfig("author");
     assert.equal(cfg.models.writer, "gpt-5.6-terra");
     assert.equal(cfg.models.revise, DEFAULT_ROLE_MODELS.revise_pro);
     if (prevW === undefined) delete process.env.OPENAI_WRITER_MODEL_PRO;
@@ -405,7 +405,7 @@ describe("memory store idempotency", () => {
         inputMode: "text",
       },
       undefined,
-      "pro"
+      "author"
     );
     assert.equal(project.pipelineVersion, PIPELINE_VERSION);
     assert.ok(project.modelConfig?.models.writer);
@@ -485,7 +485,7 @@ describe("memory store idempotency", () => {
         inputMode: "text",
       },
       undefined,
-      "pro"
+      "author"
     );
     await store.appendBatch(project.id, {
       batchNumber: 1,
@@ -547,7 +547,7 @@ describe("memory store idempotency", () => {
         inputMode: "text",
       },
       undefined,
-      "pro"
+      "author"
     );
     delete project.modelConfig;
     delete project.pipelineVersion;

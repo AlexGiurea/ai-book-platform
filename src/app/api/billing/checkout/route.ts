@@ -7,6 +7,7 @@ import {
   getStripe,
   hasStripeBillingConfig,
 } from "@/lib/billing/stripe";
+import { PLAN_DEFINITIONS, normalizePlan } from "@/lib/plans";
 import { rateLimit, rejectCrossOrigin } from "@/lib/security/request";
 
 export const runtime = "nodejs";
@@ -27,6 +28,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sign in before upgrading." }, { status: 401 });
   }
 
+  // Which tier is being bought. There are two paid plans now, so the price ID
+  // cannot be inferred from "not free".
+  let requestedPlan = normalizePlan(
+    new URL(request.url).searchParams.get("plan")
+  );
+  try {
+    const body = (await request.json()) as { plan?: unknown };
+    if (body?.plan != null) requestedPlan = normalizePlan(body.plan);
+  } catch {
+    // No body is fine; the query parameter or the default covers it.
+  }
+  if (requestedPlan === "free") requestedPlan = "author";
+
   if (!hasStripeBillingConfig()) {
     return NextResponse.json(
       { error: "Stripe billing is prepared in code but not configured yet." },
@@ -34,10 +48,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const priceId = getPriceIdForPlan("pro");
+  const priceId = getPriceIdForPlan(requestedPlan);
   if (!priceId) {
     return NextResponse.json(
-      { error: "STRIPE_PRO_PRICE_ID is required before Checkout can start." },
+      {
+        error: `${PLAN_DEFINITIONS[requestedPlan].stripePriceEnv} is required before Checkout can start.`,
+      },
       { status: 503 }
     );
   }

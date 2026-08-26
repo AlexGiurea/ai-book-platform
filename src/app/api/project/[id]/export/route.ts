@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { store } from "@/lib/agent";
 import { exportProjectBook, buildKindleEmail, type ExportFormat } from "@/lib/book-export";
 import { getCurrentUser } from "@/lib/auth/session";
+import { isPaidPlan } from "@/lib/plans";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -30,9 +31,9 @@ export async function GET(
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (user.plan !== "pro") {
+  if (!isPaidPlan(user.plan)) {
     return NextResponse.json(
-      { error: "PDF, EPUB, and Kindle export are available on Pro." },
+      { error: "PDF, EPUB, and Kindle export are available on Author and Novelist." },
       { status: 403 }
     );
   }
@@ -42,7 +43,7 @@ export async function GET(
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
-  if (project.plan !== "pro") {
+  if (!isPaidPlan(project.plan)) {
     return NextResponse.json(
       { error: "This project is not eligible for export." },
       { status: 403 }

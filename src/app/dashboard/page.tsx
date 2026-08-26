@@ -10,12 +10,12 @@ import {
   CheckCircle2,
   Clock,
   Edit3,
-  Feather,
+
   FileText,
   Hash,
   MoreHorizontal,
   Plus,
-  Sparkles,
+
   Trash2,
   Wand2,
   X,
@@ -25,6 +25,8 @@ import Navbar from "@/components/Navbar";
 import { dashboardBooks, type Book } from "@/lib/sampleData";
 import { estimatePdfPagesFromChapters, estimatePdfPagesFromWordCount } from "@/lib/page-estimate";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { useWordAllowance } from "@/hooks/useWordAllowance";
+import WordAllowanceMeter from "@/components/WordAllowanceMeter";
 import { cn } from "@/lib/utils";
 
 const EXAMPLE_BOOK_IDS = new Set(dashboardBooks.map((b) => b.id));
@@ -194,6 +196,7 @@ function writeLibraryCache(books: LibraryBook[]): void {
 
 export default function DashboardPage() {
   const { user } = useAuthUser();
+  const { allowance } = useWordAllowance(Boolean(user));
   // Hydrate synchronously from sessionStorage so revisits paint instantly.
   const [liveBooks, setLiveBooks] = useState<LibraryBook[]>(() => readLibraryCache() ?? []);
   const [previewBook, setPreviewBook] = useState<LibraryBook | null>(null);
@@ -518,63 +521,9 @@ export default function DashboardPage() {
           </motion.div>
         </div>
 
-        {/* Premium prompt */}
-        {user?.plan !== "pro" ? (
-          <motion.div
-            className="glass-card rounded-2xl p-6 flex items-center justify-between gap-6"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.5 }}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-xl bg-ember-100 border border-ember-200 flex items-center justify-center flex-shrink-0">
-                <Feather size={18} className="text-ember-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-ink-500">
-                  Unlock the full creative suite
-                </p>
-                <p className="text-xs text-ink-300 mt-0.5">
-                  Save more projects, export to PDF and EPUB, generate longer books, and unlock priority generation.
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/pricing?from=dashboard"
-              className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-ember-500 hover:bg-ember-600 text-white text-sm font-medium rounded-xl transition-all shadow-ember hover:shadow-ember-lg hover:-translate-y-0.5 whitespace-nowrap"
-            >
-              <Sparkles size={13} />
-              Upgrade
-            </Link>
-          </motion.div>
-        ) : (
-          <motion.div
-            className="glass-card rounded-2xl p-6 flex items-center justify-between gap-6"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.5 }}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-11 h-11 rounded-xl bg-sage-100 border border-sage-200 flex items-center justify-center flex-shrink-0">
-                <CheckCircle2 size={18} className="text-sage-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-ink-500">
-                  Pro workspace active
-                </p>
-                <p className="text-xs text-ink-300 mt-0.5">
-                  Longer manuscripts, exports, premium covers, and priority generation are enabled for this account.
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/settings"
-              className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-parchment-50 text-ink-500 text-sm font-medium rounded-xl transition-all shadow-warm-sm whitespace-nowrap"
-            >
-              Settings
-            </Link>
-          </motion.div>
-        )}
+        {/* Word allowance — the account's primary readout, since words are
+            what Folio actually sells. */}
+        <WordAllowanceMeter allowance={allowance} />
       </main>
 
       <AnimatePresence>

@@ -220,3 +220,44 @@ alter table billing_events
 
 create index if not exists billing_events_type_created_idx
   on billing_events (type, created_at desc);
+
+-- Word allowance ledger.
+--
+-- Folio meters words, so every book has to debit an account somewhere. This is
+-- append-only on purpose: a running balance column would be a lock hotspot and
+-- would lose the audit trail, and the trail is the thing that lets a support
+-- question ("why did it say I was out?") ever be answered.
+--
+-- A book writes two rows. 'reserve' debits the preset's target words at project
+-- creation, so a user learns they cannot afford a book BEFORE any money is
+-- spent on planning. 'settle' then posts the signed difference between target
+-- and delivered once the book finishes — books land within a few percent, so
+-- this is usually a small credit back. A cancelled or failed book refunds the
+-- whole unconsumed reserve.
+--
+-- period_start is the allowance month the entry counts against, denormalised so
+-- the balance query never has to re-derive it and can be a plain indexed sum.
+create table if not exists word_ledger (
+  id bigserial primary key,
+  user_id text not null references users(id) on delete cascade,
+  project_id text references projects(id) on delete set null,
+  kind text not null,
+  words integer not null,
+  period_start date not null,
+  note text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists word_ledger_period_idx
+  on word_ledger (user_id, period_start);
+
+create index if not exists word_ledger_project_idx
+  on word_ledger (project_id, kind);
+
+-- One reserve per project, so a retried create cannot double-charge.
+create unique index if not exists word_ledger_one_reserve_per_project
+  on word_ledger (project_id) where kind = 'reserve';
+
+-- One settlement per project, so a replayed completion cannot double-credit.
+create unique index if not exists word_ledger_one_settle_per_project
+  on word_ledger (project_id) where kind = 'settle';

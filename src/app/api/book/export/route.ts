@@ -6,6 +6,7 @@ import {
   type ExportFormat,
 } from "@/lib/book-export";
 import { getCurrentUser } from "@/lib/auth/session";
+import { isPaidPlan } from "@/lib/plans";
 import { rejectCrossOrigin } from "@/lib/security/request";
 
 export const runtime = "nodejs";
@@ -106,9 +107,9 @@ export async function POST(request: Request) {
   }
 
   const user = await getCurrentUser();
-  if (user && user.plan !== "pro") {
+  if (user && !isPaidPlan(user.plan)) {
     return NextResponse.json(
-      { error: "PDF, EPUB, and Kindle export are available on Pro." },
+      { error: "PDF, EPUB, and Kindle export are available on Author and Novelist." },
       { status: 403 }
     );
   }

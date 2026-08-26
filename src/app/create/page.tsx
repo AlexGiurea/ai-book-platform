@@ -18,6 +18,9 @@ import {
   X,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import WordAllowanceMeter from "@/components/WordAllowanceMeter";
+import { LENGTH_TARGET_WORDS } from "@/lib/billing/allowance";
+import { useWordAllowance, type LengthAffordability } from "@/hooks/useWordAllowance";
 import { cn } from "@/lib/utils";
 
 const genres = [
@@ -54,13 +57,18 @@ const povOptions = [
   { label: "Third person", value: "third", desc: "He / she / they narration" },
 ];
 
+/**
+ * `words` is what the book costs against the monthly allowance, read from the
+ * same table the API charges against — the picker must never quote a number the
+ * server would disagree with.
+ */
 const lengths = [
-  { label: "Dev short", value: "dev",    desc: "~90 PDF pages, ~12k words · quick test" },
-  { label: "Short",     value: "short",  desc: "~170 PDF pages, ~24k words" },
-  { label: "Medium",    value: "medium", desc: "~285 PDF pages, ~40k words" },
-  { label: "Novel",     value: "long",   desc: "~425 PDF pages, ~60k words" },
-  { label: "Epic",      value: "large",  desc: "~850 PDF pages, ~120k words" },
-  { label: "Tome",      value: "tome",   desc: "~1,325 PDF pages, ~188k words" },
+  { label: "Dev short", value: "dev",    words: LENGTH_TARGET_WORDS.dev,    desc: "~90 PDF pages · quick test" },
+  { label: "Short",     value: "short",  words: LENGTH_TARGET_WORDS.short,  desc: "~170 PDF pages" },
+  { label: "Medium",    value: "medium", words: LENGTH_TARGET_WORDS.medium, desc: "~285 PDF pages" },
+  { label: "Novel",     value: "long",   words: LENGTH_TARGET_WORDS.long,   desc: "~425 PDF pages" },
+  { label: "Epic",      value: "large",  words: LENGTH_TARGET_WORDS.large,  desc: "~850 PDF pages" },
+  { label: "Tome",      value: "tome",   words: LENGTH_TARGET_WORDS.tome,   desc: "~1,325 PDF pages" },
 ];
 
 const imageStyles = [
@@ -123,6 +131,21 @@ export default function CreatePage() {
   const [tone, setTone] = useState("");
   const [pov, setPov] = useState("");
   const [length, setLength] = useState("medium");
+  const { allowance } = useWordAllowance();
+
+  /** Affordability by preset, keyed for the picker. */
+  const affordability: Record<string, LengthAffordability | undefined> = {};
+  for (const entry of allowance?.lengths ?? []) affordability[entry.preset] = entry;
+
+  // Never submit a preset the account cannot pay for. Derived rather than
+  // corrected in an effect: the picked value stays whatever the reader picked,
+  // and this is the value the page actually acts on.
+  const selectedQuote = affordability[length];
+  const effectiveLength =
+    selectedQuote && !selectedQuote.affordable
+      ? ([...(allowance?.lengths ?? [])].reverse().find((l) => l.affordable)?.preset ??
+        length)
+      : length;
   const [imageStyle, setImageStyle] = useState("painterly");
   const [showOptions, setShowOptions] = useState(false);
 
@@ -235,7 +258,7 @@ export default function CreatePage() {
       genre,
       tone,
       pov,
-      length,
+      length: effectiveLength,
       imageStyle,
       contextFiles: documents.map((f) => f.name),
       canvas: hasCanvasContent ? canvasPayload : undefined,
@@ -937,27 +960,58 @@ export default function CreatePage() {
 
                   {/* Length */}
                   <div>
-                    <label className="text-xs font-medium text-ink-300 uppercase tracking-wider mb-3 block">
-                      Length
-                    </label>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <label className="text-xs font-medium text-ink-300 uppercase tracking-wider">
+                        Length
+                      </label>
+                      <WordAllowanceMeter allowance={allowance} compact />
+                    </div>
                     <div className="grid grid-cols-3 gap-3">
-                      {lengths.map((l) => (
-                        <button
-                          key={l.value}
-                          onClick={() => setLength(l.value)}
-                          className={cn(
-                            "p-4 rounded-xl text-left transition-all duration-150 border cursor-pointer",
-                            length === l.value
-                              ? "bg-ink-500 border-ink-500 text-parchment-50"
-                              : "bg-parchment-100/60 border-parchment-300/60 text-ink-400 hover:border-ink-200"
-                          )}
-                        >
-                          <div className="text-sm font-medium">{l.label}</div>
-                          <div className={cn("text-xs mt-0.5", length === l.value ? "text-parchment-300" : "text-ink-200")}>
-                            {l.desc}
-                          </div>
-                        </button>
-                      ))}
+                      {lengths.map((l) => {
+                        // A length nobody can pay for is shown, priced, and
+                        // disabled — hiding it would make the allowance feel
+                        // arbitrary instead of legible.
+                        const quote = affordability[l.value];
+                        const blocked = quote ? !quote.affordable : false;
+                        const selected = effectiveLength === l.value;
+                        return (
+                          <button
+                            key={l.value}
+                            onClick={() => !blocked && setLength(l.value)}
+                            disabled={blocked}
+                            title={
+                              blocked && quote
+                                ? `${quote.shortfall.toLocaleString()} words short this month`
+                                : undefined
+                            }
+                            className={cn(
+                              "p-4 rounded-xl text-left transition-all duration-150 border",
+                              blocked
+                                ? "cursor-not-allowed border-parchment-300/40 bg-parchment-100/30 text-ink-200/70"
+                                : selected
+                                  ? "cursor-pointer bg-ink-500 border-ink-500 text-parchment-50"
+                                  : "cursor-pointer bg-parchment-100/60 border-parchment-300/60 text-ink-400 hover:border-ink-200"
+                            )}
+                          >
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-sm font-medium">{l.label}</span>
+                              <span
+                                className={cn(
+                                  "text-[10px] tabular-nums",
+                                  selected ? "text-parchment-300" : "text-ink-200"
+                                )}
+                              >
+                                {(l.words / 1000).toLocaleString()}k
+                              </span>
+                            </div>
+                            <div className={cn("text-xs mt-0.5", selected ? "text-parchment-300" : "text-ink-200")}>
+                              {blocked && quote
+                                ? `${quote.shortfall.toLocaleString()} words short`
+                                : l.desc}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 

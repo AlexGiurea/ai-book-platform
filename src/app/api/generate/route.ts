@@ -3,7 +3,9 @@ import { store } from "@/lib/agent";
 import type { ProjectInput } from "@/lib/agent";
 import { JobKeys } from "@/lib/agent/job-keys";
 import { getCurrentUser } from "@/lib/auth/session";
-import { canCreateProject, canUseLength } from "@/lib/plans";
+import { isOwnerEmail } from "@/lib/plans";
+import { wordsForLength } from "@/lib/billing/allowance";
+import { getUsage, reserveWords } from "@/lib/billing/ledger";
 import {
   rateLimit,
   readJsonLimited,
@@ -57,18 +59,35 @@ export async function POST(request: Request) {
     );
   }
 
-  const existingProjects = await store.listProjectsForUser(user.id);
-  if (!canCreateProject(user.plan, existingProjects.length)) {
-    return NextResponse.json(
-      { error: "Free accounts can keep one generated book. Upgrade to Pro for more projects." },
-      { status: 403 }
-    );
-  }
+  // Folio meters words, so length is no longer gated by plan — the allowance
+  // decides. Check before creating anything, so an unaffordable book fails
+  // cleanly instead of leaving a stranded project behind.
+  const length = input.preferences.length ?? "medium";
+  const requestedWords = wordsForLength(length);
+  const isOwner = isOwnerEmail(user.email);
 
-  if (!canUseLength(user.plan, input.preferences.length ?? "medium")) {
+  const usage = await getUsage({
+    userId: user.id,
+    plan: user.plan,
+    isOwner,
+    requested: requestedWords,
+  });
+  if (!usage.ok) {
     return NextResponse.json(
-      { error: "Novel, Epic, and Tome lengths are available on Pro." },
-      { status: 403 }
+      {
+        error: `This book needs ${requestedWords.toLocaleString()} words and you have ${usage.remaining.toLocaleString()} left this month.`,
+        code: "allowance_exceeded",
+        usage: {
+          allowance: usage.allowance,
+          used: usage.used,
+          remaining: usage.remaining,
+          requested: requestedWords,
+          shortfall: usage.shortfall,
+          shortfallUsd: usage.shortfallUsd,
+          period: usage.period,
+        },
+      },
+      { status: 402 }
     );
   }
 
@@ -95,11 +114,38 @@ export async function POST(request: Request) {
     user.plan
   );
 
+  // Debit now. The insert re-checks the balance at write time, so two creates
+  // racing for the same headroom cannot both succeed.
+  const reserved = await reserveWords({
+    userId: user.id,
+    projectId: project.id,
+    plan: user.plan,
+    isOwner,
+    words: requestedWords,
+  });
+  if (!reserved.ok) {
+    await store.updateStatus(
+      project.id,
+      "cancelled",
+      "Not enough words left in this month's allowance."
+    );
+    return NextResponse.json(
+      {
+        error: `This book needs ${requestedWords.toLocaleString()} words and you have ${reserved.remaining.toLocaleString()} left this month.`,
+        code: "allowance_exceeded",
+      },
+      { status: 402 }
+    );
+  }
+
   await store.enqueueJob(project.id, "plan", {
     force: true,
     dedupeKey: JobKeys.planInitial(),
     payload: { planningRunId: "initial" },
   });
 
-  return NextResponse.json({ projectId: project.id });
+  return NextResponse.json({
+    projectId: project.id,
+    words: { reserved: requestedWords, remaining: reserved.remaining },
+  });
 }
