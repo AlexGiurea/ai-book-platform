@@ -10,8 +10,11 @@ import {
   LENGTH_TARGET_WORDS,
   OVERAGE_USD_PER_1K_WORDS,
   PLAN_MONTHLY_WORDS,
+  PURCHASABLE_PLANS,
   UNLIMITED_WORDS,
   checkAffordability,
+  concurrentBooksFor,
+  isPaidPlan,
   estimatedCogsUsd,
   formatWords,
   monthlyWordsFor,
@@ -43,6 +46,33 @@ describe("allowances", () => {
     for (const [plan, words] of Object.entries(PLAN_MONTHLY_WORDS)) {
       assert.ok(words > 0, `${plan} has no allowance`);
     }
+  });
+
+  it("keeps the developer plan unmetered and unsellable", () => {
+    // Privilege lives in users.plan, not in an env var that a fresh machine or
+    // a preview deployment might not have.
+    assert.equal(PLAN_MONTHLY_WORDS.dev, UNLIMITED_WORDS);
+    assert.equal(normalizePlan("dev"), "dev");
+    assert.equal(monthlyWordsFor("dev"), UNLIMITED_WORDS);
+    assert.equal(isPaidPlan("dev"), true);
+    assert.ok(
+      !PURCHASABLE_PLANS.includes("dev"),
+      "dev must never appear on the pricing page"
+    );
+    const r = checkAffordability({
+      allowance: monthlyWordsFor("dev"),
+      used: 10_000_000,
+      requested: LENGTH_TARGET_WORDS.tome,
+    });
+    assert.equal(r.ok, true);
+    assert.equal(r.unlimited, true);
+  });
+
+  it("lets bigger plans run more books at once", () => {
+    assert.ok(concurrentBooksFor("free") >= 1, "everyone can write one book");
+    assert.ok(concurrentBooksFor("author") > concurrentBooksFor("free"));
+    assert.ok(concurrentBooksFor("novelist") > concurrentBooksFor("author"));
+    assert.ok(concurrentBooksFor("dev") > concurrentBooksFor("novelist"));
   });
 
   it("free covers exactly one dev book, so the tier is a real sample", () => {
@@ -144,7 +174,8 @@ describe("cost model", () => {
     // The whole point of the repricing. If any tier's allowance costs more to
     // serve than the tier charges, the business loses money per sale.
     const monthlyPrice: Record<string, number> = { free: 0, author: 19, novelist: 49 };
-    for (const [plan, words] of Object.entries(PLAN_MONTHLY_WORDS)) {
+    for (const plan of PURCHASABLE_PLANS) {
+      const words = PLAN_MONTHLY_WORDS[plan];
       const cogs = estimatedCogsUsd(words);
       if (plan === "free") {
         assert.ok(cogs < 1.5, `free tier costs ${cogs.toFixed(2)} to serve`);
@@ -164,9 +195,10 @@ describe("cost model", () => {
     );
   });
 
-  it("costs nothing for nothing", () => {
+  it("costs nothing for nothing, and does not return NaN for an unmetered plan", () => {
     assert.equal(estimatedCogsUsd(0), 0);
     assert.equal(estimatedCogsUsd(-100), 0);
+    assert.equal(estimatedCogsUsd(UNLIMITED_WORDS), 0);
   });
 });
 

@@ -44,7 +44,16 @@ export const LENGTH_ORDER: LengthPreset[] = [
   "tome",
 ];
 
-export type SubscriptionPlan = "free" | "author" | "novelist";
+/**
+ * `dev` is not purchasable and never appears on the pricing page. It exists so
+ * the developer account is a real row in the database rather than an env-var
+ * special case — an unmetered account whose privilege is visible in `users.plan`
+ * and survives a machine that has no FOLIO_OWNER_EMAILS set.
+ */
+export type SubscriptionPlan = "free" | "author" | "novelist" | "dev";
+
+/** Plans a customer can actually buy. `dev` is deliberately absent. */
+export const PURCHASABLE_PLANS: SubscriptionPlan[] = ["free", "author", "novelist"];
 
 /**
  * Legacy value. Every account created before metering carries plan='pro', which
@@ -57,7 +66,14 @@ const LEGACY_PLAN_ALIASES: Record<string, SubscriptionPlan> = {
 export const DEFAULT_SIGNUP_PLAN: SubscriptionPlan = "free";
 
 export function normalizePlan(value: unknown): SubscriptionPlan {
-  if (value === "free" || value === "author" || value === "novelist") return value;
+  if (
+    value === "free" ||
+    value === "author" ||
+    value === "novelist" ||
+    value === "dev"
+  ) {
+    return value;
+  }
   if (typeof value === "string" && LEGACY_PLAN_ALIASES[value]) {
     return LEGACY_PLAN_ALIASES[value];
   }
@@ -73,12 +89,35 @@ export function isPaidPlan(plan: unknown): boolean {
   return normalizePlan(plan) !== "free";
 }
 
+/** Owner accounts are not metered. Set FOLIO_OWNER_EMAILS to grant this. */
+export const UNLIMITED_WORDS = Number.POSITIVE_INFINITY;
+
 /** Words included per calendar month, by plan. */
 export const PLAN_MONTHLY_WORDS: Record<SubscriptionPlan, number> = {
   free: 12_000,
   author: 40_000,
   novelist: 120_000,
+  dev: UNLIMITED_WORDS,
 };
+
+/**
+ * Books a plan may have in flight at once.
+ *
+ * Separate from the word allowance because they stop different things. The
+ * allowance caps what someone spends in a month; this caps what they can occupy
+ * of a shared worker right now. Without it one account can queue its whole
+ * allowance at once and sit in front of everybody else's first chapter.
+ */
+export const PLAN_CONCURRENT_BOOKS: Record<SubscriptionPlan, number> = {
+  free: 1,
+  author: 2,
+  novelist: 3,
+  dev: 10,
+};
+
+export function concurrentBooksFor(plan: unknown): number {
+  return PLAN_CONCURRENT_BOOKS[normalizePlan(plan)];
+}
 
 /**
  * What a customer pays beyond their allowance. Not chargeable yet — there is no
@@ -90,9 +129,6 @@ export const PLAN_MONTHLY_WORDS: Record<SubscriptionPlan, number> = {
  * because the longest books are exactly where people will overspend.
  */
 export const OVERAGE_USD_PER_1K_WORDS = 0.6;
-
-/** Owner accounts are not metered. Set FOLIO_OWNER_EMAILS to grant this. */
-export const UNLIMITED_WORDS = Number.POSITIVE_INFINITY;
 
 export function monthlyWordsFor(plan: unknown, isOwner = false): number {
   if (isOwner) return UNLIMITED_WORDS;
@@ -194,7 +230,8 @@ const EFFECTIVE_INPUT_USD_PER_TOKEN = 3.7e-6;
 const EFFECTIVE_OUTPUT_USD_PER_TOKEN = 19.9e-6;
 
 export function estimatedCogsUsd(words: number): number {
-  if (words <= 0) return 0;
+  // An unmetered plan has no bounded cost to estimate.
+  if (!Number.isFinite(words) || words <= 0) return 0;
   const inputTokens =
     INPUT_TOKENS_PER_WORD * words + INPUT_TOKENS_PER_WORD_SQUARED * words * words;
   const outputTokens = OUTPUT_TOKENS_FIXED + OUTPUT_TOKENS_PER_WORD * words;

@@ -13,6 +13,8 @@ export interface LengthAffordability {
 
 export interface WordAllowance {
   plan: { id: string; name: string; price: string; monthlyWords: number };
+  /** Books in flight now, against how many this plan may run at once. */
+  concurrency: { limit: number; active: number };
   unlimited: boolean;
   /** Null when the account is unmetered — Infinity is not valid JSON. */
   allowance: number | null;

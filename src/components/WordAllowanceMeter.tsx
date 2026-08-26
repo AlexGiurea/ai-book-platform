@@ -44,9 +44,12 @@ export default function WordAllowanceMeter({
           <InfinityIcon size={18} className="text-ember-600" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-ink-500">Unmetered account</p>
+          <p className="text-sm font-semibold text-ink-500">
+            {allowance.plan.name} account · unmetered
+          </p>
           <p className="mt-0.5 text-xs text-ink-200">
-            {allowance.used.toLocaleString()} words written in {monthName(allowance.period.start)}.
+            {allowance.used.toLocaleString()} words written in {monthName(allowance.period.start)} ·{" "}
+            {allowance.concurrency.active} of {allowance.concurrency.limit} books running
           </p>
         </div>
       </div>
@@ -92,6 +95,12 @@ export default function WordAllowanceMeter({
           <p className="mt-0.5 text-xs text-ink-200">
             {allowance.plan.name} · {total.toLocaleString()} words each month · resets 1 {monthName(allowance.period.end)}
           </p>
+          {allowance.concurrency.active > 0 ? (
+            <p className="mt-0.5 text-xs text-ink-200">
+              {allowance.concurrency.active} of {allowance.concurrency.limit}{" "}
+              {allowance.concurrency.limit === 1 ? "book slot" : "book slots"} in use
+            </p>
+          ) : null}
         </div>
         {allowance.plan.id === "free" ? (
           <Link

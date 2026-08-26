@@ -106,8 +106,16 @@ export async function POST(request: Request) {
     );
   }
 
+  // `user &&` here meant a signed-out caller skipped the gate entirely and got
+  // the paid export for free. Authentication first, then entitlement.
   const user = await getCurrentUser();
-  if (user && !isPaidPlan(user.plan)) {
+  if (!user) {
+    return NextResponse.json(
+      { error: "Sign in to export a book." },
+      { status: 401 }
+    );
+  }
+  if (!isPaidPlan(user.plan)) {
     return NextResponse.json(
       { error: "PDF, EPUB, and Kindle export are available on Author and Novelist." },
       { status: 403 }

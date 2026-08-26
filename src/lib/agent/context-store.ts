@@ -1292,6 +1292,13 @@ export class ContextStore {
       return rows[0] ? mapJob(rows[0]) : undefined;
     }
 
+    // The global runner — this is the cron, and it serves every account, so it
+    // is the only place fairness can live. Ordering purely by created_at lets
+    // whoever queued first hold the worker for their entire book while everyone
+    // else waits on chapter one. Preferring accounts with the fewest jobs
+    // already running turns that into a round robin: a user with nothing in
+    // flight is always served before a user who is mid-book. Within one
+    // account, and between equally-busy accounts, it stays first-come.
     const rows = (await sql`
       update generation_jobs
       set status = 'running',
@@ -1300,13 +1307,23 @@ export class ContextStore {
           started_at = coalesce(started_at, ${now}),
           updated_at = ${now}
       where id = (
-        select id from generation_jobs
-        where attempts < ${MAX_JOB_ATTEMPTS}
+        select gj.id
+        from generation_jobs gj
+        left join projects p on p.id = gj.project_id
+        where gj.attempts < ${MAX_JOB_ATTEMPTS}
         and (
-          (status = 'queued' and run_after <= now())
-          or (status = 'running' and locked_at < now() - interval '6 minutes')
+          (gj.status = 'queued' and gj.run_after <= now())
+          or (gj.status = 'running' and gj.locked_at < now() - interval '6 minutes')
         )
-        order by created_at asc
+        order by (
+          select count(*)
+          from generation_jobs busy
+          join projects bp on bp.id = busy.project_id
+          where busy.status = 'running'
+            and busy.locked_at >= now() - interval '6 minutes'
+            and bp.user_id is not distinct from p.user_id
+        ) asc,
+        gj.created_at asc
         limit 1
       )
       and (
@@ -1370,6 +1387,29 @@ export class ContextStore {
       returning id
     `) as { id: string }[];
     return rows.length;
+  }
+
+  /**
+   * Books this user currently has in flight.
+   *
+   * "In flight" excludes awaiting_approval: a plan sitting at the human gate
+   * consumes no worker and may wait days, so counting it would let a forgotten
+   * draft permanently block someone's next book.
+   */
+  async countActiveProjectsForUser(userId: string): Promise<number> {
+    const active = new Set(["pending", "queued", "planning", "writing"]);
+    if (!this.persistent) {
+      return Array.from(memory.projects.values()).filter(
+        (p) => p.userId === userId && active.has(p.status)
+      ).length;
+    }
+    const rows = (await getSql()`
+      select count(*)::int as n
+      from projects
+      where user_id = ${userId}
+        and status in ('pending', 'queued', 'planning', 'writing')
+    `) as { n: number }[];
+    return rows[0]?.n ?? 0;
   }
 
   /** For UI: job queue / lock state while diagnosing stuck planning. */

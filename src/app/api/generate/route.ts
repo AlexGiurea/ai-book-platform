@@ -3,7 +3,7 @@ import { store } from "@/lib/agent";
 import type { ProjectInput } from "@/lib/agent";
 import { JobKeys } from "@/lib/agent/job-keys";
 import { getCurrentUser } from "@/lib/auth/session";
-import { isOwnerEmail } from "@/lib/plans";
+import { concurrentBooksFor, isOwnerEmail } from "@/lib/plans";
 import { wordsForLength } from "@/lib/billing/allowance";
 import { getUsage, reserveWords } from "@/lib/billing/ledger";
 import {
@@ -65,6 +65,26 @@ export async function POST(request: Request) {
   const length = input.preferences.length ?? "medium";
   const requestedWords = wordsForLength(length);
   const isOwner = isOwnerEmail(user.email);
+
+  // Two different limits. The allowance caps a month's spend; this caps how
+  // much of a shared worker one account can occupy right now, so a single user
+  // cannot queue their whole allowance and sit in front of everyone else.
+  const activeBooks = await store.countActiveProjectsForUser(user.id);
+  const concurrencyLimit = concurrentBooksFor(user.plan);
+  if (activeBooks >= concurrencyLimit) {
+    return NextResponse.json(
+      {
+        error:
+          concurrencyLimit === 1
+            ? "You already have a book being written. Wait for it to finish, or cancel it, before starting another."
+            : `You can write ${concurrencyLimit} books at once on your plan, and ${activeBooks} are already running.`,
+        code: "concurrency_limit",
+        limit: concurrencyLimit,
+        active: activeBooks,
+      },
+      { status: 429 }
+    );
+  }
 
   const usage = await getUsage({
     userId: user.id,

@@ -9,7 +9,8 @@ import {
 } from "@/lib/billing/allowance";
 import { getUsage, recentEntries } from "@/lib/billing/ledger";
 import { getCurrentUser } from "@/lib/auth/session";
-import { getPlanDefinition, isOwnerEmail } from "@/lib/plans";
+import { concurrentBooksFor, getPlanDefinition, isOwnerEmail } from "@/lib/plans";
+import { store } from "@/lib/agent";
 import { rateLimit } from "@/lib/security/request";
 
 export const runtime = "nodejs";
@@ -53,7 +54,13 @@ export async function GET(request: Request) {
     };
   });
 
+  const activeBooks = await store.countActiveProjectsForUser(user.id);
+
   return NextResponse.json({
+    concurrency: {
+      limit: concurrentBooksFor(user.plan),
+      active: activeBooks,
+    },
     plan: {
       id: definition.id,
       name: definition.name,

@@ -10,7 +10,9 @@ import {
   DEFAULT_SIGNUP_PLAN,
   LENGTH_TARGET_WORDS,
   OVERAGE_USD_PER_1K_WORDS,
+  PLAN_CONCURRENT_BOOKS,
   PLAN_MONTHLY_WORDS,
+  concurrentBooksFor,
   isPaidPlan,
   normalizePlan,
   type SubscriptionPlan,
@@ -19,7 +21,9 @@ import {
 export {
   DEFAULT_SIGNUP_PLAN,
   OVERAGE_USD_PER_1K_WORDS,
+  PLAN_CONCURRENT_BOOKS,
   PLAN_MONTHLY_WORDS,
+  concurrentBooksFor,
   isPaidPlan,
   normalizePlan,
 };
@@ -163,8 +167,38 @@ export const PLAN_DEFINITIONS: Record<SubscriptionPlan, PlanDefinition> = {
       support: "Direct line",
     },
   },
+  /**
+   * The developer account. Never rendered on the pricing page — PLAN_ORDER is
+   * what the marketing surface iterates — but it is a real plan value so the
+   * privilege lives in the database rather than in an environment variable.
+   */
+  dev: {
+    id: "dev",
+    name: "Developer",
+    price: "—",
+    cadence: "",
+    model: PAID_PLAN_MODEL,
+    modelLabel: "GPT-5.6 Sol",
+    monthlyWords: PLAN_MONTHLY_WORDS.dev,
+    allowanceExample: "Unmetered",
+    summary: "Internal account. No allowance, no billing, every length preset.",
+    bestFor: "Building and testing Folio itself",
+    cta: "Internal",
+    href: "/dashboard",
+    features: ["Unmetered words", "Every length preset", "Higher concurrency"],
+    limits: {
+      words: "Unmetered",
+      books: "Unlimited",
+      manuscripts: "Every length preset",
+      exports: "PDF and EPUB",
+      queue: "Priority queue",
+      covers: "Premium covers and retries",
+      support: "n/a",
+    },
+  },
 };
 
+/** Purchasable plans, in the order the pricing page shows them. */
 export const PLAN_ORDER: SubscriptionPlan[] = ["free", "author", "novelist"];
 
 export function getPlanDefinition(plan: unknown): PlanDefinition {
@@ -210,5 +244,5 @@ export function isOwnerEmail(email: string | null | undefined): boolean {
 }
 
 export function getInitialPlanForEmail(email: string): SubscriptionPlan {
-  return isOwnerEmail(email) ? "novelist" : DEFAULT_SIGNUP_PLAN;
+  return isOwnerEmail(email) ? "dev" : DEFAULT_SIGNUP_PLAN;
 }
