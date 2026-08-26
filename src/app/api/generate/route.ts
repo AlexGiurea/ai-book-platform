@@ -3,7 +3,9 @@ import { store } from "@/lib/agent";
 import type { ProjectInput } from "@/lib/agent";
 import { JobKeys } from "@/lib/agent/job-keys";
 import { getCurrentUser } from "@/lib/auth/session";
+import { verificationRequired } from "@/lib/auth/verification";
 import { concurrentBooksFor, isOwnerEmail } from "@/lib/plans";
+import { durableRateLimit } from "@/lib/security/durable-rate-limit";
 import { wordsForLength } from "@/lib/billing/allowance";
 import { getUsage, reserveWords } from "@/lib/billing/ledger";
 import {
@@ -29,6 +31,29 @@ export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in to create a book." }, { status: 401 });
+  }
+
+  // Generation is where money is spent, so it carries the durable limit and the
+  // verification gate. Neither belongs on sign-in: someone may look around
+  // unverified, they just may not spend.
+  const durable = await durableRateLimit({
+    key: "generate:create",
+    subject: user.id,
+    limit: 20,
+    windowMs: 60 * 60_000,
+    message: "Too many books started in the last hour.",
+  });
+  if (durable) return durable;
+
+  if (verificationRequired() && !user.emailVerifiedAt) {
+    return NextResponse.json(
+      {
+        error:
+          "Confirm your email address before writing a book. Check your inbox, or ask for a new link.",
+        code: "email_unverified",
+      },
+      { status: 403 }
+    );
   }
 
   const parsed = await readJsonLimited(request, 512 * 1024);

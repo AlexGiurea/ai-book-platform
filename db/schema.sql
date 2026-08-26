@@ -261,3 +261,66 @@ create unique index if not exists word_ledger_one_reserve_per_project
 -- One settlement per project, so a replayed completion cannot double-credit.
 create unique index if not exists word_ledger_one_settle_per_project
   on word_ledger (project_id) where kind = 'settle';
+
+-- ── Email verification ────────────────────────────────────────────────
+--
+-- A free account costs real money to serve and signup asks for nothing but an
+-- address, so an unverified account must not be able to spend. Verification
+-- gates generation, not sign-in: someone can look around, they just cannot
+-- start a book until the address is theirs.
+alter table users
+  add column if not exists email_verified_at timestamptz;
+
+-- Grandfather accounts that predate verification. Bounded by a fixed date so
+-- re-running the migration cannot silently verify somebody who signed up after
+-- the feature shipped.
+update users
+  set email_verified_at = created_at
+  where email_verified_at is null
+    and created_at < timestamptz '2026-08-27T00:00:00Z';
+
+-- Only the hash is stored. A leak of this table must not hand anyone a working
+-- verification link.
+create table if not exists email_verifications (
+  token_hash text primary key,
+  user_id text not null references users(id) on delete cascade,
+  email_normalized text not null,
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists email_verifications_user_idx
+  on email_verifications (user_id, created_at desc);
+
+-- ── Durable rate limiting ─────────────────────────────────────────────
+--
+-- The in-memory limiter counts per serverless instance, so the real ceiling is
+-- limit x instances — fine for a poll, useless for anything that costs money or
+-- creates accounts. Those endpoints count here instead.
+create table if not exists rate_limits (
+  bucket text not null,
+  window_start timestamptz not null,
+  count integer not null default 0,
+  primary key (bucket, window_start)
+);
+
+create index if not exists rate_limits_window_idx
+  on rate_limits (window_start);
+
+-- ── Plan change audit ─────────────────────────────────────────────────
+--
+-- Who moved to which plan, when, and why. Needed to answer a support question,
+-- and to reconcile against Stripe once subscriptions are real.
+create table if not exists plan_changes (
+  id bigserial primary key,
+  user_id text not null references users(id) on delete cascade,
+  from_plan text,
+  to_plan text not null,
+  reason text not null,
+  actor text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists plan_changes_user_idx
+  on plan_changes (user_id, created_at desc);

@@ -16,6 +16,8 @@ export interface AuthUser {
   name?: string;
   plan: SubscriptionPlan;
   createdAt: string;
+  /** Null until the address is confirmed. Gates generation, not sign-in. */
+  emailVerifiedAt?: string;
   billing?: {
     stripeCustomerId?: string;
     stripeSubscriptionId?: string;
@@ -35,6 +37,7 @@ type UserRow = {
   stripe_subscription_status: string | null;
   stripe_price_id: string | null;
   stripe_current_period_end: string | Date | null;
+  email_verified_at: string | Date | null;
   password_hash: string;
   password_salt: string;
   created_at: string | Date;
@@ -57,6 +60,7 @@ function toUser(
     | "stripe_subscription_status"
     | "stripe_price_id"
     | "stripe_current_period_end"
+    | "email_verified_at"
   >
 ): AuthUser {
   return {
@@ -66,6 +70,11 @@ function toUser(
     plan: normalizePlan(row.plan),
     createdAt:
       row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    emailVerifiedAt: row.email_verified_at
+      ? row.email_verified_at instanceof Date
+        ? row.email_verified_at.toISOString()
+        : row.email_verified_at
+      : undefined,
     billing: {
       stripeCustomerId: row.stripe_customer_id ?? undefined,
       stripeSubscriptionId: row.stripe_subscription_id ?? undefined,
@@ -130,7 +139,7 @@ export async function createUser(input: {
     returning
       id, email, name, plan, created_at,
       stripe_customer_id, stripe_subscription_id, stripe_subscription_status,
-      stripe_price_id, stripe_current_period_end
+      stripe_price_id, stripe_current_period_end, email_verified_at
   `) as Pick<
     UserRow,
     | "id"
@@ -143,6 +152,7 @@ export async function createUser(input: {
     | "stripe_subscription_status"
     | "stripe_price_id"
     | "stripe_current_period_end"
+    | "email_verified_at"
   >[];
   return toUser(rows[0]);
 }
@@ -214,7 +224,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     select
       u.id, u.email, u.name, u.plan, u.created_at,
       u.stripe_customer_id, u.stripe_subscription_id, u.stripe_subscription_status,
-      u.stripe_price_id, u.stripe_current_period_end
+      u.stripe_price_id, u.stripe_current_period_end, u.email_verified_at
     from user_sessions s
     join users u on u.id = s.user_id
     where s.token_hash = ${hashToken(token)}
@@ -232,6 +242,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     | "stripe_subscription_status"
     | "stripe_price_id"
     | "stripe_current_period_end"
+    | "email_verified_at"
   >[];
   return rows[0] ? toUser(rows[0]) : null;
 }

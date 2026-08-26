@@ -27,6 +27,7 @@ import { estimatePdfPagesFromChapters, estimatePdfPagesFromWordCount } from "@/l
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useWordAllowance } from "@/hooks/useWordAllowance";
 import WordAllowanceMeter from "@/components/WordAllowanceMeter";
+import VerifyEmailBanner from "@/components/VerifyEmailBanner";
 import { cn } from "@/lib/utils";
 
 const EXAMPLE_BOOK_IDS = new Set(dashboardBooks.map((b) => b.id));
@@ -521,9 +522,13 @@ export default function DashboardPage() {
           </motion.div>
         </div>
 
-        {/* Word allowance — the account's primary readout, since words are
-            what Folio actually sells. */}
-        <WordAllowanceMeter allowance={allowance} />
+        {/* Confirm-email first: an unverified account cannot start a book, so
+            the fix belongs above the meter that says how many words are left. */}
+        <div className="space-y-4">
+          <VerifyEmailBanner user={user} />
+          {/* Words are what Folio sells, so this is the account's primary readout. */}
+          <WordAllowanceMeter allowance={allowance} />
+        </div>
       </main>
 
       <AnimatePresence>

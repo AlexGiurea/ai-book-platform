@@ -1,4 +1,6 @@
 import Stripe from "stripe";
+import { getAppBaseUrl } from "@/lib/app-url";
+import { setUserPlan } from "./plan-changes";
 import { getSql } from "@/lib/db/postgres";
 import type { AuthUser } from "@/lib/auth/session";
 import { PLAN_DEFINITIONS, type SubscriptionPlan } from "@/lib/plans";
@@ -28,13 +30,8 @@ export function getStripe(): Stripe {
   return cachedStripe;
 }
 
-export function getAppBaseUrl(request: Request): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.VERCEL_PROJECT_PRODUCTION_URL?.replace(/^/, "https://") ??
-    new URL(request.url).origin
-  ).replace(/\/$/, "");
-}
+/** @see @/lib/app-url — re-exported so existing imports keep working. */
+export { getAppBaseUrl };
 
 export function getPriceIdForPlan(plan: SubscriptionPlan): string | null {
   const env = PLAN_DEFINITIONS[plan].stripePriceEnv;
@@ -92,10 +89,26 @@ export async function syncSubscriptionToUser(subscription: Stripe.Subscription) 
     ? getPlanForPriceId(priceId) ?? "author"
     : "free";
 
+  // Words already spent stay spent; the allowance is read from the plan held
+  // now, so an upgrade takes effect immediately and a downgrade reads as zero
+  // remaining rather than as debt. See @/lib/billing/plan-changes.
+  const owner = (await getSql()`
+    select id from users where stripe_customer_id = ${customerId} limit 1
+  `) as { id: string }[];
+  if (owner[0]) {
+    await setUserPlan({
+      userId: owner[0].id,
+      plan,
+      reason: active ? "stripe_subscription" : "stripe_cancelled",
+      actor: `stripe:${subscription.id}`,
+    });
+  }
+
+  // `plan` is deliberately absent — setUserPlan above owns that column, and
+  // writing it here too would move somebody between tiers with no audit row.
   await getSql()`
     update users
-    set plan = ${plan},
-        stripe_subscription_id = ${subscription.id},
+    set stripe_subscription_id = ${subscription.id},
         stripe_subscription_status = ${status},
         stripe_price_id = ${priceId},
         stripe_current_period_end = ${periodEnd},
@@ -110,10 +123,21 @@ export async function markStripeSubscriptionDeleted(subscription: Stripe.Subscri
       ? subscription.customer
       : subscription.customer.id;
 
+  const owner = (await getSql()`
+    select id from users where stripe_customer_id = ${customerId} limit 1
+  `) as { id: string }[];
+  if (owner[0]) {
+    await setUserPlan({
+      userId: owner[0].id,
+      plan: "free",
+      reason: "stripe_cancelled",
+      actor: `stripe:${subscription.id}`,
+    });
+  }
+
   await getSql()`
     update users
-    set plan = 'free',
-        stripe_subscription_id = ${subscription.id},
+    set stripe_subscription_id = ${subscription.id},
         stripe_subscription_status = ${subscription.status},
         stripe_current_period_end = null,
         updated_at = now()
